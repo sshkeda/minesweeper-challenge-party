@@ -1,0 +1,34 @@
+{
+  "id": "mtmmkz0h-lhjr",
+  "createdAt": 1788506483777,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 1450175987,
+  "toolHead": 14,
+  "startHead": 14,
+  "allowRetry": true,
+  "spectate": false,
+  "durationMs": 300000,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "ready",
+      "moves": 0,
+      "toolCalls": 0,
+      "toolsEdited": 0,
+      "retries": 0,
+      "solved": 0,
+      "boardIndex": 0,
+      "threadId": "01a06b4b-30ed-71b1-bb29-6f1b33122649"
+    }
+  },
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0,
+    "solved": 0,
+    "boardIndex": 0
+  }
+}

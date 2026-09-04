@@ -9,6 +9,8 @@ export type Guest = {
   toolCalls: number;
   toolsEdited: number;
   retries: number;
+  solved: number;
+  boardIndex: number;
   error?: string;
 };
 
@@ -24,8 +26,9 @@ export type Game = {
   allowRetry: boolean;
   spectate: boolean;
   startedAt?: number;
+  durationMs: number;
   guests: Record<string, Guest>;
-  human: { status: "ready" | "playing" | "won" | "lost" | "spectating"; startedAt?: number; endedAt?: number; moves: number; retries: number };
+  human: { status: "ready" | "playing" | "won" | "lost" | "spectating"; startedAt?: number; endedAt?: number; moves: number; retries: number; solved: number; boardIndex: number };
   winner?: string;
 };
 

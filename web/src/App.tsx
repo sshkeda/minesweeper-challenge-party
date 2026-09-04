@@ -4,8 +4,8 @@ import { Transcript, type Entry } from "@/components/Transcript";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { api, openSocket, post, type Game, type GuestEvent, type ToolDefinition } from "@/lib/api";
-import { Minesweeper, type CellView } from "@/lib/minesweeper";
+import { api, openSocket, post, type Game, type Guest, type GuestEvent, type ToolDefinition } from "@/lib/api";
+import { boardSeed, Minesweeper, type CellView } from "@/lib/minesweeper";
 import { createGuestWebMCP } from "@/lib/webmcp";
 
 const params = new URLSearchParams(location.search);
@@ -16,16 +16,16 @@ type Settings = {
   rows: number;
   cols: number;
   mines: number;
+  minutes: number;
   model: string;
   effort: "low" | "medium" | "high";
-  allowRetry: boolean;
   spectate: boolean;
   sameLayout: boolean;
   toolHead: string;
   seed: string;
 };
 
-const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, model: "gpt-5.6-luna", effort: "low", allowRetry: true, spectate: false, sameLayout: false, toolHead: "", seed: "" };
+const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, minutes: 5, model: "gpt-5.6-luna", effort: "low", spectate: false, sameLayout: false, toolHead: "", seed: "" };
 
 function modelLabel(model: string) {
   return model
@@ -37,15 +37,31 @@ function modelLabel(model: string) {
 let entryCounter = 0;
 const nextId = () => `entry-${++entryCounter}`;
 
-function useClock(startedAt: number | null, endedAt: number | null) {
+function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (!startedAt || endedAt) return;
+    if (!active) return;
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
-  }, [startedAt, endedAt]);
-  if (!startedAt) return 0;
-  return ((endedAt ?? now) - startedAt) / 1000;
+  }, [active]);
+  return now;
+}
+
+function formatClock(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function describeTool(name: string, input: unknown): string {
+  const coords = input as { row?: number; col?: number } | undefined;
+  const at = coords && coords.row !== undefined ? ` ${coords.row},${coords.col}` : "";
+  if (name === "reveal_cell" || name === "dig") return `Dig${at}`;
+  if (name === "flag_cell" || name === "flag") return `Flag${at}`;
+  if (name === "look_at_board") return "Look";
+  if (name === "list_tools") return "Check tools";
+  if (name === "ready_up") return "Ready";
+  if (name === "edit_tool") return `Build tool ${(input as { name?: string })?.name ?? ""}`;
+  return name;
 }
 
 export default function App() {
@@ -63,32 +79,28 @@ function HostView() {
   const [agentEntries, setAgentEntries] = useState<Entry[]>([]);
   const [humanView, setHumanView] = useState<CellView[][] | null>(null);
   const [agentView, setAgentView] = useState<CellView[][] | null>(null);
-  const [agentCursor, setAgentCursor] = useState<Set<string> | null>(null);
   const [raceLog, setRaceLog] = useState<string[]>([]);
-  const [raceStartedAt, setRaceStartedAt] = useState<number | null>(null);
-  const [raceEndedAt, setRaceEndedAt] = useState<number | null>(null);
   const engineRef = useRef<Minesweeper | null>(null);
   const gameRef = useRef<Game | null>(null);
-  const toolCallNames = useRef(new Map<string, string>());
+  const lastBoardIndex = useRef(0);
   gameRef.current = game;
 
-  const clock = useClock(raceStartedAt, raceEndedAt);
   const agentLabel = modelLabel(settings.model);
-  const lastRetries = useRef(0);
+  const phase = !game ? "idle" : game.winner ? "done" : game.startedAt ? "running" : "invited";
+  const now = useNow(phase === "running");
+  const timeLeft = game?.startedAt ? game.startedAt + game.durationMs - now : (game?.durationMs ?? settings.minutes * 60_000);
+  const timeUp = phase === "running" && timeLeft <= 0;
 
-  useEffect(() => {
-    localStorage.setItem("advanced", advanced ? "1" : "");
-  }, [advanced]);
-  useEffect(() => {
-    localStorage.setItem("settings", JSON.stringify(settings));
-  }, [settings]);
+  useEffect(() => localStorage.setItem("advanced", advanced ? "1" : ""), [advanced]);
+  useEffect(() => localStorage.setItem("settings", JSON.stringify(settings)), [settings]);
 
   const appendAgent = useCallback((entry: Entry) => setAgentEntries((entries) => [...entries, entry]), []);
+  const appendHuman = useCallback((entry: Entry) => setHumanEntries((entries) => [...entries, entry]), []);
   const appendRace = useCallback((line: string) => setRaceLog((lines) => [...lines, line]), []);
 
   const handleGuestEvent = useCallback(
     (event: GuestEvent) => {
-      const finalizeStreams = (entries: Entry[]) => entries.map((entry) => (entry.type === "reasoning" || entry.type === "text") && entry.streaming ? { ...entry, streaming: false } : entry);
+      const finalizeStreams = (entries: Entry[]) => entries.map((entry) => ((entry.type === "reasoning" || entry.type === "text") && entry.streaming ? { ...entry, streaming: false } : entry));
       if (event.kind === "reasoning" || event.kind === "text") {
         setAgentEntries((entries) => {
           const last = entries[entries.length - 1];
@@ -103,10 +115,10 @@ function HostView() {
       if (event.kind === "tool-call") {
         const args = (event.input as { arguments?: { name?: string; input?: unknown } })?.arguments ?? {};
         const isListTools = /webmcp_list_tools/.test(event.toolName);
-        const name = isListTools ? "list_tools" : args.name ?? event.toolName.replace(/^mcp__\w+__/, "");
-        const input = isListTools ? {} : args.input ?? {};
-        toolCallNames.current.set(event.id ?? "", name);
-        appendAgent({ id: event.id ?? nextId(), type: "tool", name, input, state: "input-available", title: name === "edit_tool" ? `edit_tool → ${(input as { name?: string }).name ?? ""}` : undefined });
+        const isReady = /ready_up/.test(event.toolName);
+        const name = isListTools ? "list_tools" : isReady ? "ready_up" : /webmcp_call_tool/.test(event.toolName) ? args.name ?? "tool" : event.toolName.replace(/^mcp__\w+__/, "");
+        const input = isListTools || isReady ? {} : args.input ?? {};
+        appendAgent({ id: event.id ?? nextId(), type: "tool", name, title: describeTool(name, input), input, state: "input-available" });
         if (name === "edit_tool") appendAgent({ id: nextId(), type: "note", tone: "big", text: `Built a new tool: ${(input as { name?: string }).name}. Every future agent gets it.` });
       }
       if (event.kind === "tool-result") {
@@ -122,13 +134,13 @@ function HostView() {
         }
         setAgentEntries((entries) => entries.map((entry) => (entry.type === "tool" && entry.id === event.id ? { ...entry, output, state: raw?.error ? "output-error" : "output-available", errorText: raw?.error ? String(raw.error) : undefined } : entry)));
         const text = JSON.stringify(output ?? "");
-        if (/"hitMine":true/.test(text)) appendAgent({ id: nextId(), type: "note", tone: "bad", text: gameRef.current?.allowRetry ? "Hit a mine. Trying again on the same board." : "Hit a mine. Out." });
-        else if (/"status":"won"/.test(text)) appendAgent({ id: nextId(), type: "note", tone: "good", text: "Cleared the board." });
+        if (/"hitMine":true/.test(text)) appendAgent({ id: nextId(), type: "note", tone: "bad", text: "Boom. Next board." });
+        else if (/"status":"won"/.test(text)) appendAgent({ id: nextId(), type: "note", tone: "good", text: "Solved. Next board." });
       }
       if (event.kind === "finish") appendAgent({ id: nextId(), type: "note", text: "Done." });
       if (event.kind === "error") appendAgent({ id: nextId(), type: "note", tone: "bad", text: event.message });
     },
-    [agentLabel, appendAgent],
+    [agentLabel, appendAgent, appendRace],
   );
 
   useEffect(() => {
@@ -141,37 +153,34 @@ function HostView() {
       const current = gameRef.current;
       if (!current || (message.gameId && message.gameId !== current.id)) return;
       if (message.type === "guest") {
-        setGame((previous) => (previous ? { ...previous, guests: { ...previous.guests, [message.guest.name]: message.guest } } : previous));
-        if (message.board) {
-          setAgentView((previous) => {
-            const changed = new Set<string>();
-            const board = message.board as CellView[][];
-            board.forEach((cells, row) => cells.forEach((cell, col) => { if (previous?.[row]?.[col] !== cell) changed.add(`${row},${col}`); }));
-            if (changed.size) setAgentCursor(changed);
-            return board;
-          });
-        }
-        if (message.guest.status === "won") appendRace(`${agentLabel} cleared the board`);
-        if (message.guest.retries > lastRetries.current) {
-          lastRetries.current = message.guest.retries;
-          appendAgent({ id: nextId(), type: "note", text: `Attempt ${message.guest.retries + 1}` });
+        const guest = message.guest as Guest;
+        setGame((previous) => (previous ? { ...previous, guests: { ...previous.guests, [guest.name]: guest } } : previous));
+        if (message.board) setAgentView(message.board);
+        if (guest.boardIndex > lastBoardIndex.current) {
+          lastBoardIndex.current = guest.boardIndex;
+          appendAgent({ id: nextId(), type: "note", text: `Board ${guest.boardIndex + 1}` });
         }
       }
       if (message.type === "chatter") handleGuestEvent(message.ev);
       if (message.type === "started") {
-        setGame((previous) => (previous ? { ...previous, startedAt: message.startedAt } : previous));
-        setRaceStartedAt(message.startedAt);
+        setGame((previous) => (previous ? { ...previous, startedAt: message.startedAt, durationMs: message.durationMs } : previous));
         appendRace("Race started");
       }
       if (message.type === "winner") {
-        setGame((previous) => (previous ? { ...previous, winner: message.winner } : previous));
-        setRaceEndedAt(Date.now());
-        appendRace(message.winner === "human" ? "You win" : message.winner === "nobody" ? "Nobody cleared it" : `${agentLabel} wins`);
+        setGame((previous) => (previous ? { ...previous, winner: message.winner, human: message.human ?? previous.human, guests: message.guests ?? previous.guests } : previous));
+        appendRace("Time's up");
       }
     };
     api<{ tools: ToolDefinition[] }>("/api/tools").then((config) => setTools(config.tools));
     return () => socket.close();
-  }, [handleGuestEvent, agentLabel, appendRace]);
+  }, [handleGuestEvent, appendAgent, appendRace]);
+
+  function loadHumanBoard(created: Game, boardIndex: number) {
+    const engine = new Minesweeper({ rows: created.rows, cols: created.cols, mines: created.mines, seed: boardSeed(created.seed, boardIndex) });
+    engine.onChange = () => setHumanView(engine.view());
+    engineRef.current = engine;
+    setHumanView(engine.view());
+  }
 
   async function inviteLuna() {
     setStarting(true);
@@ -179,28 +188,21 @@ function HostView() {
       rows: settings.rows,
       cols: settings.cols,
       mines: settings.mines,
+      durationMs: settings.minutes * 60_000,
       seed: settings.seed ? Number(settings.seed) : undefined,
       toolHead: settings.toolHead,
-      allowRetry: settings.allowRetry,
       spectate: settings.spectate,
       useLast: settings.sameLayout,
     });
-    toolCallNames.current.clear();
-    lastRetries.current = 0;
+    lastBoardIndex.current = 0;
     setHumanEntries([]);
     setAgentEntries([]);
     setAgentView(null);
-    setAgentCursor(null);
     setRaceLog([`${agentLabel} invited`]);
-    setRaceEndedAt(null);
-    setRaceStartedAt(null);
-    const engine = new Minesweeper({ rows: created.rows, cols: created.cols, mines: created.mines, seed: created.seed });
-    engine.onChange = () => setHumanView(engine.view());
-    engineRef.current = engine;
-    setHumanView(engine.view());
+    loadHumanBoard(created, 0);
     setGame(created);
-    const invited = await post<Game["guests"][string][]>(`/api/games/${created.id}/invite`, { count: 1, model: settings.model, reasoningEffort: settings.effort });
-    setGame((previous) => (previous && previous.id === created.id ? { ...previous, guests: Object.fromEntries(invited.map((invitedGuest) => [invitedGuest.name, invitedGuest])) } : previous));
+    const invited = await post<Guest[]>(`/api/games/${created.id}/invite`, { count: 1, model: settings.model, reasoningEffort: settings.effort });
+    setGame((previous) => (previous && previous.id === created.id ? { ...previous, guests: Object.fromEntries(invited.map((guest) => [guest.name, guest])) } : previous));
     setStarting(false);
   }
 
@@ -212,38 +214,35 @@ function HostView() {
   async function humanMove(kind: "dig" | "flag", row: number, col: number) {
     const engine = engineRef.current;
     const current = gameRef.current;
-    if (!engine || !current || !current.startedAt || current.human.status === "won" || current.human.status === "lost") return;
-    const wasReady = engine.status === "ready";
+    if (!engine || !current || !current.startedAt || current.winner || Date.now() > current.startedAt + current.durationMs) return;
     const result = kind === "dig" ? engine.reveal(row, col) : engine.toggleFlag(row, col);
     if (!result.ok) return;
-    const patch: Partial<Game["human"]> = { moves: current.human.moves + 1 };
-    if (wasReady && !current.human.startedAt) {
-      patch.status = "playing";
-      patch.startedAt = Date.now();
-    }
-    setHumanEntries((entries) => [...entries, { id: nextId(), type: "tool", name: kind, input: { row, col }, output: result, state: "output-available" }]);
+    const patch: Partial<Game["human"]> = { moves: current.human.moves + 1, status: "playing" };
+    if (!current.human.startedAt) patch.startedAt = Date.now();
+    appendHuman({ id: nextId(), type: "tool", name: kind, title: describeTool(kind, { row, col }), input: {}, state: "output-available" });
     if (engine.status === "won") {
-      patch.status = "won";
-      patch.endedAt = Date.now();
-      setHumanEntries((entries) => [...entries, { id: nextId(), type: "note", tone: "good", text: "You cleared the board." }]);
-      appendRace("You cleared the board");
-    }
-    if (engine.status === "lost") {
-      patch.status = "lost";
-      patch.endedAt = Date.now();
-      setHumanEntries((entries) => [...entries, { id: nextId(), type: "note", tone: "bad", text: "You hit a mine. That was your one life." }]);
-      appendRace("You hit a mine");
+      patch.solved = current.human.solved + 1;
+      patch.boardIndex = current.human.boardIndex + 1;
+      appendHuman({ id: nextId(), type: "note", tone: "good", text: "Solved. Next board." });
+      appendRace(`You solved board ${current.human.boardIndex + 1}`);
+      loadHumanBoard(current, patch.boardIndex);
+    } else if (engine.status === "lost") {
+      patch.boardIndex = current.human.boardIndex + 1;
+      appendHuman({ id: nextId(), type: "note", tone: "bad", text: "Boom. Next board." });
+      appendRace(`You hit a mine on board ${current.human.boardIndex + 1}`);
+      setHumanView(engine.view());
+      setTimeout(() => loadHumanBoard(current, patch.boardIndex!), 700);
     }
     const human = await post<Game["human"]>(`/api/games/${current.id}/human`, patch);
     setGame((previous) => (previous ? { ...previous, human } : previous));
   }
 
   const guest = game ? Object.values(game.guests)[0] : undefined;
-  const guestFrames = game && !game.winner ? Object.keys(game.guests) : [];
   const engine = engineRef.current;
-  const phase = !game ? "idle" : game.winner ? "done" : game.startedAt ? "running" : "invited";
   const lunaReady = guest?.status === "ready";
-  const resultText = game?.winner === "human" ? "You win." : game?.winner === "nobody" ? "Nobody cleared it." : game?.winner ? `${agentLabel} wins.` : "";
+  const guestFrames = game && !game.winner ? Object.keys(game.guests) : [];
+  const resultText = game?.winner === "human" ? "You win." : game?.winner === "tie" ? "Tie." : game?.winner === "nobody" ? "Nobody solved a board." : game?.winner ? `${agentLabel} wins.` : "";
+  const canPlay = phase === "running" && !timeUp && !game?.spectate;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -257,16 +256,24 @@ function HostView() {
 
       <main className="grid grid-cols-[minmax(0,1fr)_auto_200px_auto_minmax(0,1fr)] items-start gap-5 px-6 pb-10">
         <section className="h-[70vh] min-h-0 min-w-0">
-          <div className="mb-2 text-sm font-medium">You</div>
-          <Transcript entries={humanEntries} from="user" emptyTitle={phase === "running" ? "Make a move." : "Your moves will show here."} />
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+            You
+            {game && <Badge variant="secondary" className="text-[10px]">{game.human.solved} solved</Badge>}
+          </div>
+          <Transcript entries={humanEntries} from="user" emptyTitle={canPlay ? "Make a move." : "Your moves will show here."} />
         </section>
 
         <section className="pt-7">
-          <Board view={humanView} rows={game?.rows ?? settings.rows} cols={game?.cols ?? settings.cols} revealedMines={engine?.status === "lost" ? engine.mine : null} onReveal={phase === "running" && !game?.spectate ? (row, col) => humanMove("dig", row, col) : undefined} onFlag={phase === "running" && !game?.spectate ? (row, col) => humanMove("flag", row, col) : undefined} dimmed={phase !== "running" || game?.spectate} />
+          <Board view={humanView} rows={game?.rows ?? settings.rows} cols={game?.cols ?? settings.cols} revealedMines={engine?.status === "lost" ? engine.mine : null} onReveal={canPlay ? (row, col) => humanMove("dig", row, col) : undefined} onFlag={canPlay ? (row, col) => humanMove("flag", row, col) : undefined} dimmed={!canPlay} />
         </section>
 
         <section className="flex h-[70vh] flex-col items-center gap-4 pt-7 text-center">
-          <div className="font-mono text-4xl tabular-nums">{clock.toFixed(1)}s</div>
+          <div className="font-mono text-4xl tabular-nums">{formatClock(timeLeft)}</div>
+          {game && (
+            <div className="text-sm text-muted-foreground">
+              <span className="text-foreground">{game.spectate ? "–" : game.human.solved}</span> · <span className="text-foreground">{guest?.solved ?? 0}</span>
+            </div>
+          )}
           {phase === "idle" && (
             <Button size="lg" className="w-full" disabled={!connected || starting} onClick={inviteLuna}>
               {starting ? "Inviting…" : "Invite Luna"}
@@ -280,7 +287,7 @@ function HostView() {
           {phase === "done" && (
             <>
               <div className="text-xl font-semibold">{resultText}</div>
-              <Button size="lg" className="w-full" onClick={() => { setGame(null); setRaceStartedAt(null); setRaceEndedAt(null); setRaceLog([]); }}>
+              <Button size="lg" className="w-full" onClick={() => { setGame(null); setRaceLog([]); }}>
                 Play again
               </Button>
             </>
@@ -293,14 +300,14 @@ function HostView() {
         </section>
 
         <section className="pt-7">
-          <Board view={agentView} rows={game?.rows ?? settings.rows} cols={game?.cols ?? settings.cols} dimmed={phase !== "running"} highlight={agentCursor} />
+          <Board view={agentView} rows={game?.rows ?? settings.rows} cols={game?.cols ?? settings.cols} dimmed={phase !== "running"} />
         </section>
 
         <section className="h-[70vh] min-h-0 min-w-0">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium">
             {agentLabel}
             <Badge variant="outline" className="text-[10px]">{settings.effort} effort</Badge>
-            {guest && guest.retries > 0 && <Badge variant="secondary" className="text-[10px]">attempt {guest.retries + 1}</Badge>}
+            {guest && <Badge variant="secondary" className="text-[10px]">{guest.solved} solved</Badge>}
           </div>
           <Transcript entries={agentEntries} from="assistant" emptyTitle="Luna's moves will show here." waiting={phase !== "idle" && phase !== "done" && agentEntries.length === 0} />
         </section>
@@ -318,6 +325,7 @@ function HostView() {
               <Field label="Rows"><input type="number" className={inputClass} value={settings.rows} onChange={(event) => setSettings({ ...settings, rows: +event.target.value })} /></Field>
               <Field label="Cols"><input type="number" className={inputClass} value={settings.cols} onChange={(event) => setSettings({ ...settings, cols: +event.target.value })} /></Field>
               <Field label="Mines"><input type="number" className={inputClass} value={settings.mines} onChange={(event) => setSettings({ ...settings, mines: +event.target.value })} /></Field>
+              <Field label="Minutes"><input type="number" className={inputClass} value={settings.minutes} min={1} max={30} onChange={(event) => setSettings({ ...settings, minutes: +event.target.value })} /></Field>
               <Field label="Model">
                 <select className={inputClass} value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })}>
                   {["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"].map((model) => <option key={model}>{model}</option>)}
@@ -337,9 +345,8 @@ function HostView() {
               </select>
             </Field>
             <div className="mt-3 space-y-2">
-              <Toggle label="Luna can retry after a mine" checked={settings.allowRetry} onChange={(allowRetry) => setSettings({ ...settings, allowRetry })} />
               <Toggle label="I just want to watch" checked={settings.spectate} onChange={(spectate) => setSettings({ ...settings, spectate })} />
-              <Toggle label="Same board as last time" checked={settings.sameLayout} onChange={(sameLayout) => setSettings({ ...settings, sameLayout })} />
+              <Toggle label="Same boards as last time" checked={settings.sameLayout} onChange={(sameLayout) => setSettings({ ...settings, sameLayout })} />
             </div>
           </div>
           <div className="rounded-lg border border-border p-4 text-sm">
@@ -387,10 +394,8 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 function GuestView({ gameId, guestName }: { gameId: string; guestName: string }) {
   const [game, setGame] = useState<Game | null>(null);
   const [view, setView] = useState<CellView[][] | null>(null);
-  const [attempt, setAttempt] = useState(1);
   const gameRef = useRef<Game | null>(null);
   const engineRef = useRef<Minesweeper | null>(null);
-  const [elapsed, setElapsed] = useState(0);
   gameRef.current = game;
 
   useEffect(() => {
@@ -400,7 +405,7 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
       const loaded = await api<Game & { error?: string }>(`/api/games/${gameId}`);
       if (disposed || loaded.error) return;
       setGame(loaded);
-      const engine = new Minesweeper({ rows: loaded.rows, cols: loaded.cols, mines: loaded.mines, seed: loaded.seed });
+      const engine = new Minesweeper({ rows: loaded.rows, cols: loaded.cols, mines: loaded.mines, seed: boardSeed(loaded.seed, 0) });
       engine.onChange = () => setView(engine.view());
       engineRef.current = engine;
       setView(engine.view());
@@ -412,24 +417,19 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
       socket.addEventListener("message", (event) => {
         const message = JSON.parse(event.data);
         if (message.type === "tools") load();
-        if (message.type === "guest" && message.gameId === gameId && message.guest.name === guestName) setAttempt(message.guest.retries + 1);
+        if (message.type === "started" && message.gameId === gameId) setGame((previous) => (previous ? { ...previous, startedAt: message.startedAt, durationMs: message.durationMs } : previous));
       });
       await load();
     })();
-    const timer = setInterval(() => setElapsed(engineRef.current?.elapsed() ?? 0), 100);
     return () => {
       disposed = true;
-      clearInterval(timer);
       socket.close();
     };
   }, [gameId, guestName]);
 
-  const engine = engineRef.current;
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
-      <div className="text-sm text-muted-foreground">GPT 5.6 Luna{attempt > 1 ? ` · attempt ${attempt}` : ""}</div>
-      <div className="font-mono text-3xl tabular-nums">{elapsed.toFixed(1)}s</div>
-      {game && <Board view={view} rows={game.rows} cols={game.cols} revealedMines={engine?.status === "lost" ? engine.mine : null} />}
+      {game && <Board view={view} rows={game.rows} cols={game.cols} />}
     </div>
   );
 }

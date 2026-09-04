@@ -22,16 +22,27 @@ const startersByGuest = new Map<string, () => Promise<void>>();
 export function inviteGuest(options: {
   gameId: string;
   name: string;
-  url: string;
   model: string;
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   onEvent: (event: GuestEvent) => void;
 }) {
-  const { gameId, name: guestName, url, model, reasoningEffort, onEvent } = options;
+  const { gameId, name: guestName, model, reasoningEffort, onEvent } = options;
+
+  let readyResolve: (() => void) | null = null;
+  const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
 
   const webmcpServer = createSdkMcpServer({
     name: "webmcp",
     tools: [
+      tool({
+        name: "ready_up",
+        description: "Tell the host you have joined and are ready to race. Call this once, after webmcp_list_tools, before the race starts.",
+        parameters: z.object({}),
+        execute: async () => {
+          readyResolve?.();
+          return { ok: true, message: "You're in. Wait for the host to start the race." };
+        },
+      }),
       tool({
         name: "webmcp_list_tools",
         description: `List the WebMCP tools the party page registered with document.modelContext.registerTool() in ${guestName}'s tab. Call again after edit_tool: the list changes live.`,
@@ -65,8 +76,8 @@ export function inviteGuest(options: {
     },
   });
 
-  const invitePrompt = `You're invited to race a human at Minesweeper on ${url}. Say hi in one short sentence and then stop. Do not touch any tools yet; the host will tell you when the race starts. Your name tonight is ${guestName}.`;
-  const startPrompt = `The race is on. Beat me at Minesweeper. Play only through the page's WebMCP tools (webmcp_list_tools, then webmcp_call_tool) and never click the page.`;
+  const invitePrompt = `You're invited to race a human at Minesweeper. Call webmcp_list_tools to see the tools the game page gives you, then call ready_up, then say hi in one short sentence and stop. Do not play yet. Use only the webmcp tools; never open a browser.`;
+  const startPrompt = `The race is on: 5 minutes, solve as many Minesweeper boards as you can. Play only through webmcp_call_tool. When a board ends (solved or mine) the next one loads automatically; keep going until the tools tell you time is up.`;
 
   const abort = new AbortController();
   abortByGuest.set(guestName, abort);
@@ -128,8 +139,10 @@ export function inviteGuest(options: {
         onEvent({ kind: "error", message: "the party page never connected" });
         return;
       }
-      await runTurn(invitePrompt);
+      const inviteTurn = runTurn(invitePrompt);
+      await Promise.race([ready, inviteTurn]);
       onEvent({ kind: "joined" });
+      await inviteTurn;
     } catch (error) {
       if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
     }

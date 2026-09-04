@@ -158,6 +158,8 @@ export type Guest = {
   toolCalls: number;
   toolsEdited: number;
   retries: number;
+  solved: number;
+  boardIndex: number;
   error?: string;
 };
 
@@ -167,6 +169,8 @@ export type HumanState = {
   endedAt?: number;
   moves: number;
   retries: number;
+  solved: number;
+  boardIndex: number;
 };
 
 export type Game = {
@@ -181,6 +185,7 @@ export type Game = {
   allowRetry: boolean;
   spectate: boolean;
   startedAt?: number;
+  durationMs: number;
   guests: Record<string, Guest>;
   human: HumanState;
   winner?: "human" | string | "nobody";
@@ -221,31 +226,25 @@ function appendToolLog(gameId: string, record: Record<string, unknown>) {
   appendFileSync(join(gameDir(gameId), "tool-calls.jsonl"), JSON.stringify({ t: Date.now(), ...record }) + "\n");
 }
 
-function settleWinner(game: Game) {
+function finishRace(game: Game) {
   if (game.winner) return;
-  const isFinished = (status: string) => status === "won" || status === "lost";
   const guests = Object.values(game.guests);
-  const humanDone = game.spectate || isFinished(game.human.status);
-  const guestsDone =
-    guests.length > 0 && guests.every((guest) => isFinished(guest.status) || guest.status === "left" || guest.status === "error");
-  const finishers: { who: string; at: number }[] = [];
-  if (game.human.status === "won") finishers.push({ who: "human", at: game.human.endedAt! });
-  for (const guest of guests) if (guest.status === "won") finishers.push({ who: guest.name, at: guest.endedAt! });
-
-  if (finishers.length) {
-    const someoneStillPlaying =
-      guests.some((guest) => guest.status === "playing" || guest.status === "arriving" || guest.status === "ready") || game.human.status === "playing";
-    if ((!humanDone || !guestsDone) && someoneStillPlaying) return;
-    finishers.sort((left, right) => left.at - right.at);
-    game.winner = finishers[0].who;
-  } else if (humanDone && guestsDone) {
-    game.winner = "nobody";
+  const bestGuest = guests.reduce<Guest | null>((best, guest) => (!best || guest.solved > best.solved ? guest : best), null);
+  const humanSolved = game.spectate ? -1 : game.human.solved;
+  const guestSolved = bestGuest?.solved ?? 0;
+  game.winner = humanSolved > guestSolved ? "human" : guestSolved > humanSolved ? bestGuest!.name : humanSolved === 0 && guestSolved === 0 ? "nobody" : "tie";
+  for (const guest of guests) {
+    if (guest.status === "playing" || guest.status === "ready" || guest.status === "arriving") guest.status = "left";
+    guest.endedAt ??= Date.now();
+    endGuest(guest.name);
   }
+  saveGame(game);
+  broadcast({ type: "winner", gameId: game.id, winner: game.winner, human: game.human, guests: game.guests });
+}
 
-  if (game.winner) {
-    saveGame(game);
-    broadcast({ type: "winner", gameId: game.id, winner: game.winner });
-  }
+function settleWinner(game: Game) {
+  if (game.winner || !game.startedAt) return;
+  if (Date.now() - game.startedAt >= game.durationMs) finishRace(game);
 }
 
 type PartySocket = import("bun").ServerWebSocket<{ gameId?: string }>;
@@ -358,10 +357,11 @@ const server = Bun.serve<{ gameId?: string }>({
           seed: keepBoard ? previous!.seed : Number(body.seed) || Math.floor(Math.random() * 2 ** 31),
           toolHead: config.head,
           startHead: (await toolConfig()).head,
-          allowRetry: !!body.allowRetry,
+          allowRetry: true,
           spectate,
+          durationMs: Math.max(30_000, Math.min(30 * 60_000, Number(body.durationMs ?? 300_000))),
           guests: {},
-          human: { status: spectate ? "spectating" : "ready", moves: 0, retries: 0 },
+          human: { status: spectate ? "spectating" : "ready", moves: 0, retries: 0, solved: 0, boardIndex: 0 },
         };
         games.set(game.id, game);
         saveGame(game);
@@ -404,15 +404,11 @@ const server = Bun.serve<{ gameId?: string }>({
               guest.status = "playing";
               guest.startedAt = Date.now();
             }
-            if (body.status === "won" || body.status === "lost") {
-              if (body.status === "lost" && game.allowRetry) guest.retries++;
-              else {
-                guest.status = body.status;
-                guest.endedAt = Date.now();
-              }
-            }
+            if (body.status === "lost") guest.retries++;
           }
           if (typeof body.moves === "number") guest.moves = body.moves;
+          if (typeof body.solved === "number") guest.solved = body.solved;
+          if (typeof body.boardIndex === "number") guest.boardIndex = body.boardIndex;
           saveGame(game);
           broadcast({ type: "guest", gameId: game.id, guest, board: body.board });
           settleWinner(game);
@@ -439,17 +435,17 @@ const server = Bun.serve<{ gameId?: string }>({
             toolCalls: 0,
             toolsEdited: 0,
             retries: 0,
+            solved: 0,
+            boardIndex: 0,
           };
           game.guests[guestName] = guest;
           invited.push(guest);
-          const url = `${APP_URL}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
           waitForGuestTab(game.id, guestName).then((connected) => {
             if (!connected) appendTranscript(game.id, guestName, { kind: "error", message: "guest tab never connected" });
           });
           inviteGuest({
             gameId: game.id,
             name: guestName,
-            url,
             model: body.model || "gpt-5.6-luna",
             reasoningEffort: body.reasoningEffort || "low",
             onEvent: (event) => {
@@ -496,7 +492,8 @@ const server = Bun.serve<{ gameId?: string }>({
           game.startedAt = Date.now();
           saveGame(game);
           for (const guestName of Object.keys(game.guests)) startGuest(guestName);
-          broadcast({ type: "started", gameId: game.id, startedAt: game.startedAt });
+          broadcast({ type: "started", gameId: game.id, startedAt: game.startedAt, durationMs: game.durationMs });
+          setTimeout(() => finishRace(game), game.durationMs);
         }
         return respond(game);
       },

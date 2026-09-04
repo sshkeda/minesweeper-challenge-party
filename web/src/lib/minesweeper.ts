@@ -12,6 +12,10 @@ function seededRandom(seed: number) {
   };
 }
 
+export function boardSeed(baseSeed: number, boardIndex: number) {
+  return (baseSeed + boardIndex * 0x9e3779b9) >>> 0;
+}
+
 export class Minesweeper {
   rows: number;
   cols: number;

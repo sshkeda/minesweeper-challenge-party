@@ -1,4 +1,4 @@
-import type { Minesweeper } from "@/lib/minesweeper";
+import { boardSeed, type Minesweeper } from "@/lib/minesweeper";
 import { api, post, type Game, type ToolDefinition } from "@/lib/api";
 
 type RegisteredTool = {
@@ -74,19 +74,46 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
     socket.send(JSON.stringify({ type: "webmcp-result", id: message.id, result }));
   });
 
+  let solved = 0;
+  let boardIndex = 0;
+  let totalMoves = 0;
+
+  function timeLeftMs() {
+    const game = getGame();
+    if (!game?.startedAt) return null;
+    return game.startedAt + game.durationMs - Date.now();
+  }
+
   function reportCall(toolName: string, input: unknown, result: unknown) {
     return post(`/api/games/${gameId}/guest/${encodeURIComponent(guestName)}/call`, {
       tool: toolName,
       input,
       result,
       status: engine.status === "ready" ? undefined : engine.status,
-      moves: engine.moves,
+      moves: totalMoves + engine.moves,
+      solved,
+      boardIndex,
       board: engine.view(),
     });
   }
 
+  function nextBoard() {
+    const game = getGame();
+    if (!game) return;
+    totalMoves += engine.moves;
+    boardIndex++;
+    const startedAt = engine.startedAt;
+    engine.reset(boardSeed(game.seed, boardIndex));
+    engine.status = "playing";
+    engine.startedAt = startedAt;
+  }
+
   function makeExecute(tool: ToolDefinition) {
     return async (input: unknown) => {
+      const game = getGame();
+      if (!game?.startedAt) return { ok: false, error: "The race hasn't started yet. Wait for the host." };
+      const remaining = timeLeftMs();
+      if (remaining !== null && remaining <= 0) return { ok: false, error: "Time is up. The race is over.", solved };
       let result: unknown;
       try {
         const body = new Function("game", "input", tool.code);
@@ -94,18 +121,17 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       } catch (error) {
         result = { ok: false, error: `tool ${tool.name} threw: ${(error as Error).message}` };
       }
-      const game = getGame();
       let note: string | undefined;
-      if (engine.status === "lost") note = game?.allowRetry ? "You hit a mine. Retries are allowed tonight: the board has been reset to the same layout and the clock is still running." : "You hit a mine. You're out of this race.";
-      if (engine.status === "won") note = "You cleared the board!";
-      const output = note ? { ...(typeof result === "object" && result ? result : { result }), note } : result;
-      await reportCall(tool.name, input, output);
-      if (engine.status === "lost" && game?.allowRetry) {
-        const startedAt = engine.startedAt;
-        engine.reset(game.seed);
-        engine.status = "playing";
-        engine.startedAt = startedAt;
+      if (engine.status === "won") {
+        solved++;
+        note = `Board ${boardIndex + 1} solved. Boards solved: ${solved}. A new board is loaded; call look_at_board.`;
+      } else if (engine.status === "lost") {
+        note = `You hit a mine on board ${boardIndex + 1}. A new board is loaded; call look_at_board.`;
       }
+      const secondsLeft = remaining === null ? undefined : Math.max(0, Math.round(remaining / 1000));
+      const output = { ...(typeof result === "object" && result ? result : { result }), ...(note ? { note } : {}), secondsLeft, boardsSolved: solved };
+      await reportCall(tool.name, input, output);
+      if (engine.status === "won" || engine.status === "lost") nextBoard();
       return output;
     };
   }

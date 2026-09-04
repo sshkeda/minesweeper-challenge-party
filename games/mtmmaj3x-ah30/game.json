@@ -1,0 +1,35 @@
+{
+  "id": "mtmmaj3x-ah30",
+  "createdAt": 1788505996605,
+  "rows": 9,
+  "cols": 9,
+  "mines": 10,
+  "seed": 523931709,
+  "toolHead": 8,
+  "startHead": 8,
+  "allowRetry": true,
+  "spectate": false,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "left",
+      "moves": 0,
+      "toolCalls": 32,
+      "toolsEdited": 6,
+      "retries": 13,
+      "threadId": "01a06b43-c06f-7910-a5f6-7da6738930aa",
+      "startedAt": 1788506023288,
+      "endedAt": 1788506163125
+    }
+  },
+  "human": {
+    "status": "lost",
+    "moves": 5,
+    "retries": 0,
+    "startedAt": 1788506002668,
+    "endedAt": 1788506014693
+  },
+  "startedAt": 1788506002096,
+  "winner": "nobody"
+}

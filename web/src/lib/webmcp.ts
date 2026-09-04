@@ -19,38 +19,26 @@ declare global {
   interface Navigator {
     modelContext?: ModelContext;
   }
+  interface Window {
+    webmcp?: { listTools(): unknown[]; call(name: string, input?: unknown): Promise<unknown> };
+  }
 }
 
-export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }: { gameId: string; guestName: string; socket: WebSocket; engine: Minesweeper; getGame: () => Game | null }) {
+export function createGuestWebMCP({ gameId, guestName, engine, getGame }: { gameId: string; guestName: string; engine: Minesweeper; getGame: () => Game | null }) {
   const registry = new Map<string, RegisteredTool>();
   const nativeContext = document.modelContext?.registerTool ? document.modelContext : navigator.modelContext?.registerTool ? navigator.modelContext : null;
   const nativeRegisterTool = nativeContext?.registerTool.bind(nativeContext) ?? null;
+  const nativeUnregisterTool = nativeContext?.unregisterTool?.bind(nativeContext) ?? null;
   const native = !!nativeRegisterTool;
+  const nativelyRegistered = new Set<string>();
   let registrationAbort: AbortController | null = null;
   let editToolDefinition: { description: string; inputSchema: Record<string, unknown> } | null = null;
-
-  function publishTools() {
-    if (socket.readyState !== WebSocket.OPEN) return;
-    socket.send(
-      JSON.stringify({
-        type: "webmcp-tools",
-        gameId,
-        guest: guestName,
-        tools: [...registry.values()].map((tool) => ({ name: tool.name, title: tool.title, description: tool.description, inputSchema: tool.inputSchema, annotations: tool.annotations })),
-      }),
-    );
-  }
-
-  const nativelyRegistered = new Set<string>();
-  const nativeUnregisterTool = nativeContext?.unregisterTool?.bind(nativeContext) ?? null;
 
   async function registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }) {
     registry.set(tool.name, tool);
     options?.signal?.addEventListener("abort", () => {
       if (registry.get(tool.name) === tool) registry.delete(tool.name);
-      publishTools();
     });
-    publishTools();
     if (!nativeRegisterTool) return;
     if (nativelyRegistered.has(tool.name)) {
       if (!nativeUnregisterTool) return;
@@ -62,23 +50,18 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
 
   if (!native) document.modelContext = { registerTool };
 
-  socket.addEventListener("open", () => {
-    socket.send(JSON.stringify({ type: "hello", gameId, guest: guestName }));
-    publishTools();
-  });
-
-  socket.addEventListener("message", async (event) => {
-    const message = JSON.parse(event.data);
-    if (message.type !== "webmcp-call") return;
-    const tool = registry.get(message.name);
-    let result: unknown;
-    try {
-      result = tool ? await tool.execute(message.input ?? {}) : { ok: false, error: `no WebMCP tool named ${message.name}. Call webmcp_list_tools.` };
-    } catch (error) {
-      result = { ok: false, error: String((error as Error)?.message || error) };
-    }
-    socket.send(JSON.stringify({ type: "webmcp-result", id: message.id, result }));
-  });
+  window.webmcp = {
+    listTools: () => [...registry.values()].map((tool) => ({ name: tool.name, title: tool.title, description: tool.description, inputSchema: tool.inputSchema, annotations: tool.annotations })),
+    call: async (name, input) => {
+      const tool = registry.get(name);
+      if (!tool) return { ok: false, error: `no WebMCP tool named ${name}. Call window.webmcp.listTools().` };
+      try {
+        return await tool.execute(input ?? {});
+      } catch (error) {
+        return { ok: false, error: String((error as Error)?.message || error) };
+      }
+    },
+  };
 
   let solved = 0;
   let boardIndex = 0;
@@ -139,10 +122,17 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       return { ok: true, board: boardIndex + 1, boardsSolved: solved, secondsLeft: raceApi.secondsLeft() };
     },
   };
+
   const publicGame = Object.freeze({
-    get rows() { return engine.rows; },
-    get cols() { return engine.cols; },
-    get mines() { return engine.mines; },
+    get rows() {
+      return engine.rows;
+    },
+    get cols() {
+      return engine.cols;
+    },
+    get mines() {
+      return engine.mines;
+    },
     view: () => engine.view(),
     text: () => engine.text(),
     reveal: (row: number, col: number) => engine.reveal(row, col),
@@ -179,6 +169,18 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
     registrationAbort?.abort();
     registrationAbort = new AbortController();
     const definitions: RegisteredTool[] = [
+      {
+        name: "ready_up",
+        title: "Ready up",
+        description: "Tell the host you have joined and are ready to race. Call once before the race starts. The other tools explain the race format and how racers win.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: false },
+        execute: async () => {
+          const output = { ok: true, message: "You're in. Wait for the host to start the race, then use the tools on this page." };
+          await reportCall("ready_up", {}, output);
+          return output;
+        },
+      },
       ...tools.map((tool) => ({ name: tool.name, title: tool.name, description: tool.description, inputSchema: tool.inputSchema, annotations: { readOnlyHint: tool.name === "look_at_board" }, execute: makeExecute(tool) })),
       {
         name: "edit_tool",
@@ -190,7 +192,7 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
           const saved = await post<{ error?: string; name?: string; memoId?: number }>("/api/tools", { ...(input as object), by: guestName, gameId });
           const output = saved.error
             ? { ok: false, error: saved.error }
-            : { ok: true, saved: saved.name, memoId: saved.memoId, note: "Tool is live now for you and every future guest. The tool list changed: call webmcp_list_tools again." };
+            : { ok: true, saved: saved.name, memoId: saved.memoId, note: "Tool is live now for you and every future racer. The tool list changed: list tools again." };
           await reportCall("edit_tool", input, output);
           return output;
         },

@@ -25,7 +25,7 @@ type Settings = {
   seed: string;
 };
 
-const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, minutes: 2, model: "gpt-5.6-luna", effort: "low", spectate: false, sameLayout: false, toolHead: "", seed: "" };
+const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, minutes: 2, model: "gpt-5.6-terra", effort: "low", spectate: false, sameLayout: false, toolHead: "", seed: "" };
 
 function modelLabel(model: string) {
   return model
@@ -70,7 +70,11 @@ export default function App() {
 
 function HostView() {
   const [advanced, setAdvanced] = useState(() => localStorage.getItem("advanced") === "1");
-  const [settings, setSettings] = useState<Settings>(() => ({ ...defaultSettings, ...JSON.parse(localStorage.getItem("settings") || "{}") }));
+  const [settings, setSettings] = useState<Settings>(() => {
+    const saved = JSON.parse(localStorage.getItem("settings-v2") || "{}") as Partial<Settings>;
+    const model = ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5"].includes(saved.model ?? "") ? saved.model! : defaultSettings.model;
+    return { ...defaultSettings, ...saved, model };
+  });
   const [connected, setConnected] = useState(false);
   const [tools, setTools] = useState<ToolDefinition[]>([]);
   const [game, setGame] = useState<Game | null>(null);
@@ -92,7 +96,7 @@ function HostView() {
   const timeUp = phase === "running" && timeLeft <= 0;
 
   useEffect(() => localStorage.setItem("advanced", advanced ? "1" : ""), [advanced]);
-  useEffect(() => localStorage.setItem("settings", JSON.stringify(settings)), [settings]);
+  useEffect(() => localStorage.setItem("settings-v2", JSON.stringify(settings)), [settings]);
 
   const appendAgent = useCallback((entry: Entry) => setAgentEntries((entries) => [...entries, entry]), []);
   const appendHuman = useCallback((entry: Entry) => setHumanEntries((entries) => [...entries, entry]), []);
@@ -111,15 +115,22 @@ function HostView() {
       }
       setAgentEntries(finalizeStreams);
       if (event.kind === "session") appendAgent({ id: nextId(), type: "note", text: `session ${event.threadId}` });
-      if (event.kind === "joined") appendRace(`${agentLabel} joined`);
       if (event.kind === "tool-call") {
-        const args = (event.input as { arguments?: { name?: string; input?: unknown } })?.arguments ?? {};
-        const isListTools = /webmcp_list_tools/.test(event.toolName);
-        const isReady = /ready_up/.test(event.toolName);
-        const name = isListTools ? "list_tools" : isReady ? "ready_up" : /webmcp_call_tool/.test(event.toolName) ? args.name ?? "tool" : event.toolName.replace(/^mcp__\w+__/, "");
-        const input = isListTools || isReady ? {} : args.input ?? {};
-        appendAgent({ id: event.id ?? nextId(), type: "tool", name, title: describeTool(name, input), input, state: "input-available" });
-        if (name === "edit_tool") appendAgent({ id: nextId(), type: "note", tone: "big", text: `Built a new tool: ${(input as { name?: string }).name}. Every future agent gets it.` });
+        const args = (event.input as { arguments?: { code?: string; title?: string } })?.arguments ?? {};
+        const code = args.code ?? "";
+        const called = [...code.matchAll(/(?:tools\.call|webmcp\.call)\(\s*["'`]([a-z_]+)["'`]\s*(?:,\s*(\{[^)]*\}))?/g)];
+        if (called.length) {
+          for (const match of called) {
+            let input: unknown = {};
+            try {
+              input = match[2] ? JSON.parse(match[2].replace(/(\w+)\s*:/g, '"$1":').replace(/'/g, '"')) : {};
+            } catch {}
+            appendAgent({ id: nextId(), type: "tool", name: match[1], title: describeTool(match[1], input), input: { code }, state: "output-available" });
+            if (match[1] === "edit_tool") appendAgent({ id: nextId(), type: "note", tone: "big", text: "Built a new tool. Every future agent gets it." });
+          }
+        } else {
+          appendAgent({ id: event.id ?? nextId(), type: "tool", name: "browser", title: args.title || "Browser", input: { code }, state: "input-available" });
+        }
       }
       if (event.kind === "tool-result") {
         const raw = event.output as { result?: unknown; error?: unknown } | undefined;
@@ -154,6 +165,8 @@ function HostView() {
       if (!current || (message.gameId && message.gameId !== current.id)) return;
       if (message.type === "guest") {
         const guest = message.guest as Guest;
+        const before = current.guests[guest.name];
+        if (before?.status === "arriving" && guest.status === "ready") appendRace(`${agentLabel} joined`);
         setGame((previous) => (previous ? { ...previous, guests: { ...previous.guests, [guest.name]: guest } } : previous));
         if (message.board) setAgentView(message.board);
         if (guest.boardIndex > lastBoardIndex.current) {
@@ -182,7 +195,7 @@ function HostView() {
     setHumanView(engine.view());
   }
 
-  async function inviteLuna() {
+  async function inviteTerra() {
     setStarting(true);
     const created = await post<Game>("/api/games", {
       rows: settings.rows,
@@ -239,8 +252,7 @@ function HostView() {
 
   const guest = game ? Object.values(game.guests)[0] : undefined;
   const engine = engineRef.current;
-  const lunaReady = guest?.status === "ready";
-  const guestFrames = game && !game.winner ? Object.keys(game.guests) : [];
+  const terraReady = guest?.status === "ready";
   const resultText = game?.winner === "human" ? "You win." : game?.winner === "tie" ? "Tie." : game?.winner === "nobody" ? "Nobody solved a board." : game?.winner ? `${agentLabel} wins.` : "";
   const canPlay = phase === "running" && !timeUp && !game?.spectate;
 
@@ -275,13 +287,13 @@ function HostView() {
             </div>
           )}
           {phase === "idle" && (
-            <Button size="lg" className="w-full" disabled={!connected || starting} onClick={inviteLuna}>
-              {starting ? "Inviting…" : "Invite Luna"}
+            <Button size="lg" className="w-full" disabled={!connected || starting} onClick={inviteTerra}>
+              {starting ? "Inviting…" : "Invite Terra"}
             </Button>
           )}
           {phase === "invited" && (
-            <Button size="lg" className="w-full" disabled={!lunaReady} onClick={startRace}>
-              {lunaReady ? "Start the race" : "Waiting for Luna…"}
+            <Button size="lg" className="w-full" disabled={!terraReady} onClick={startRace}>
+              {terraReady ? "Start the race" : "Waiting for Terra…"}
             </Button>
           )}
           {phase === "done" && (
@@ -309,13 +321,9 @@ function HostView() {
             <Badge variant="outline" className="text-[10px]">{settings.effort} effort</Badge>
             {guest && <Badge variant="secondary" className="text-[10px]">{guest.solved} solved</Badge>}
           </div>
-          <Transcript entries={agentEntries} from="assistant" emptyTitle="Luna's moves will show here." waiting={phase !== "idle" && phase !== "done" && agentEntries.length === 0} />
+          <Transcript entries={agentEntries} from="assistant" emptyTitle="Terra's moves will show here." waiting={phase !== "idle" && phase !== "done" && agentEntries.length === 0} />
         </section>
       </main>
-
-      {guestFrames.map((name) => (
-        <iframe key={`${game!.id}/${name}`} title={name} src={`/?game=${game!.id}&guest=${encodeURIComponent(name)}`} className="hidden" />
-      ))}
 
       {advanced && (
         <section className="grid grid-cols-2 gap-5 px-6 pb-12">
@@ -328,7 +336,7 @@ function HostView() {
               <Field label="Minutes"><input type="number" className={inputClass} value={settings.minutes} min={1} max={30} onChange={(event) => setSettings({ ...settings, minutes: +event.target.value })} /></Field>
               <Field label="Model">
                 <select className={inputClass} value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })}>
-                  {["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"].map((model) => <option key={model}>{model}</option>)}
+                  {["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5"].map((model) => <option key={model}>{model}</option>)}
                 </select>
               </Field>
               <Field label="Effort">
@@ -338,9 +346,9 @@ function HostView() {
               </Field>
               <Field label="Board seed"><input className={inputClass} placeholder="random" value={settings.seed} onChange={(event) => setSettings({ ...settings, seed: event.target.value })} /></Field>
             </div>
-            <Field label="Which tools Luna starts with">
+            <Field label="Which tools Terra starts with">
               <select className={inputClass} value={settings.toolHead} onChange={(event) => setSettings({ ...settings, toolHead: event.target.value })}>
-                <option value="">Everything Luna has ever built</option>
+                <option value="">Everything Terra has ever built</option>
                 <option value="0">Just the basics</option>
               </select>
             </Field>
@@ -350,7 +358,7 @@ function HostView() {
             </div>
           </div>
           <div className="rounded-lg border border-border p-4 text-sm">
-            <h2 className="mb-3 font-medium">Luna's tools</h2>
+            <h2 className="mb-3 font-medium">Terra's tools</h2>
             <div className="space-y-2">
               {tools.map((tool) => (
                 <details key={tool.name} className="rounded-md border border-border p-2">
@@ -401,6 +409,7 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
   useEffect(() => {
     let disposed = false;
     const socket = openSocket();
+    socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "hello", gameId, guest: guestName })));
     (async () => {
       const loaded = await api<Game & { error?: string }>(`/api/games/${gameId}`);
       if (disposed || loaded.error) return;
@@ -409,7 +418,7 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
       engine.onChange = () => setView(engine.view());
       engineRef.current = engine;
       setView(engine.view());
-      const webmcp = createGuestWebMCP({ gameId, guestName, socket, engine, getGame: () => gameRef.current });
+      const webmcp = createGuestWebMCP({ gameId, guestName, engine, getGame: () => gameRef.current });
       const load = async () => {
         const config = await api<{ tools: ToolDefinition[] }>(`/api/tools?game=${gameId}`);
         await webmcp.registerAll(config.tools);
@@ -430,6 +439,9 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
       {game && <Board view={view} rows={game.rows} cols={game.cols} />}
+      <p className="max-w-md text-center text-xs text-muted-foreground">
+        This page exposes WebMCP tools via document.modelContext. If your browser has no WebMCP client, use tab.evaluate: window.webmcp.listTools() and await window.webmcp.call(name, input).
+      </p>
     </div>
   );
 }

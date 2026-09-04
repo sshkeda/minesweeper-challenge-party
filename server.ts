@@ -262,39 +262,9 @@ function broadcast(message: unknown) {
   for (const socket of sockets) socket.send(serialized);
 }
 
-type PublishedTool = { name: string; title?: string; description: string; inputSchema: unknown; annotations?: unknown };
-const guestTabs = new Map<string, { socket: PartySocket; tools: PublishedTool[] }>();
-const pendingCalls = new Map<string, { resolve: (value: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
+const PARTY_NAMES = ["Terra", "Nova", "Pixel", "Bolt", "Mochi", "Zippy", "Biscuit", "Comet", "Pebble", "Sprocket", "Waffles", "Gizmo"];
+const guestTabs = new Map<string, PartySocket>();
 const guestTabKey = (gameId: string, guestName: string) => `${gameId}/${guestName}`;
-
-export function webmcpListTools(gameId: string, guestName: string): PublishedTool[] | null {
-  return guestTabs.get(guestTabKey(gameId, guestName))?.tools ?? null;
-}
-
-export function webmcpCall(gameId: string, guestName: string, toolName: string, input: unknown): Promise<unknown> {
-  const tab = guestTabs.get(guestTabKey(gameId, guestName));
-  if (!tab) return Promise.resolve({ ok: false, error: "Your party page is not open. Ask the host." });
-  const callId = crypto.randomUUID();
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      pendingCalls.delete(callId);
-      resolve({ ok: false, error: "tool call timed out" });
-    }, 30_000);
-    pendingCalls.set(callId, { resolve, timer });
-    tab.socket.send(JSON.stringify({ type: "webmcp-call", id: callId, name: toolName, input }));
-  });
-}
-
-export async function waitForGuestTab(gameId: string, guestName: string, timeoutMs = 15_000): Promise<boolean> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (guestTabs.has(guestTabKey(gameId, guestName))) return true;
-    await Bun.sleep(150);
-  }
-  return false;
-}
-
-const PARTY_NAMES = ["Luna", "Nova", "Pixel", "Bolt", "Mochi", "Zippy", "Biscuit", "Comet", "Pebble", "Sprocket", "Waffles", "Gizmo"];
 const HATS = ["🎩", "🥳", "🎉", "👑", "🪩", "🎈", "🧢", "🎀", "🦄", "🪅", "🍕", "🎂"];
 
 async function readJson(request: Request) {
@@ -406,6 +376,12 @@ const server = Bun.serve<{ gameId?: string }>({
         if (guest) {
           guest.toolCalls++;
           if (body.tool === "edit_tool") guest.toolsEdited++;
+          if (body.tool === "ready_up" && guest.status === "arriving") {
+            guest.status = "ready";
+            saveGame(game);
+            broadcast({ type: "guest", gameId: game.id, guest });
+            return respond({ ok: true });
+          }
           if (body.status) {
             if (guest.status === "arriving" || guest.status === "ready") {
               guest.status = "playing";
@@ -447,13 +423,11 @@ const server = Bun.serve<{ gameId?: string }>({
           };
           game.guests[guestName] = guest;
           invited.push(guest);
-          waitForGuestTab(game.id, guestName).then((connected) => {
-            if (!connected) appendTranscript(game.id, guestName, { kind: "error", message: "guest tab never connected" });
-          });
+          const url = `${APP_URL}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
           inviteGuest({
-            gameId: game.id,
             name: guestName,
-            model: body.model || "gpt-5.6-luna",
+            url,
+            model: body.model || "gpt-5.6-terra",
             reasoningEffort: body.reasoningEffort || "low",
             onEvent: (event) => {
               appendTranscript(game.id, guestName, event);
@@ -461,11 +435,6 @@ const server = Bun.serve<{ gameId?: string }>({
               if (event.kind === "session") {
                 guest.threadId = event.threadId;
                 saveGame(game);
-              }
-              if (event.kind === "joined") {
-                guest.status = "ready";
-                saveGame(game);
-                broadcast({ type: "guest", gameId: game.id, guest });
               }
               if (event.kind === "finish") {
                 if (guest.status === "arriving" || guest.status === "ready" || guest.status === "playing") guest.status = "left";
@@ -540,14 +509,15 @@ const server = Bun.serve<{ gameId?: string }>({
     },
     close(socket) {
       sockets.delete(socket);
-      for (const [key, tab] of guestTabs) {
-        if (tab.socket !== socket) continue;
+      for (const [key, tabSocket] of guestTabs) {
+        if (tabSocket !== socket) continue;
         guestTabs.delete(key);
         const [gameId, guestName] = key.split("/");
-        endGuest(guestName);
         const game = games.get(gameId);
         const guest = game?.guests[guestName];
-        if (game && guest && (guest.status === "arriving" || guest.status === "ready" || guest.status === "playing")) {
+        if (!game || !guest || game.winner || guest.status === "arriving") continue;
+        endGuest(guestName);
+        if (guest.status === "ready" || guest.status === "playing") {
           guest.status = "left";
           guest.endedAt = Date.now();
           saveGame(game);
@@ -563,20 +533,7 @@ const server = Bun.serve<{ gameId?: string }>({
       } catch {
         return;
       }
-      if (message.type === "hello" && message.gameId && message.guest) {
-        guestTabs.set(guestTabKey(message.gameId, message.guest), { socket, tools: [] });
-      }
-      if (message.type === "webmcp-tools" && message.gameId && message.guest) {
-        guestTabs.set(guestTabKey(message.gameId, message.guest), { socket, tools: message.tools ?? [] });
-      }
-      if (message.type === "webmcp-result" && message.id) {
-        const pending = pendingCalls.get(message.id);
-        if (pending) {
-          clearTimeout(pending.timer);
-          pendingCalls.delete(message.id);
-          pending.resolve(message.result);
-        }
-      }
+      if (message.type === "hello" && message.gameId && message.guest) guestTabs.set(guestTabKey(message.gameId, message.guest), socket);
     },
   },
 });

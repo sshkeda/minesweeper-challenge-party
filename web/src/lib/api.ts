@@ -43,7 +43,6 @@ export type ToolDefinition = {
 
 export type GuestEvent =
   | { kind: "session"; threadId: string }
-  | { kind: "joined" }
   | { kind: "text"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; toolName: string; input: unknown; id?: string }

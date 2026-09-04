@@ -1,11 +1,8 @@
 import { streamText } from "ai";
-import { createCodexAppServer, createSdkMcpServer, tool, type Session } from "ai-sdk-provider-codex-app-server";
-import { z } from "zod";
-import { webmcpListTools, webmcpCall, waitForGuestTab } from "./server";
+import { createCodexAppServer, type Session } from "ai-sdk-provider-codex-app-server";
 
 export type GuestEvent =
   | { kind: "session"; threadId: string }
-  | { kind: "joined" }
   | { kind: "text"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; toolName: string; input: unknown; id?: string }
@@ -16,52 +13,17 @@ export type GuestEvent =
   | { kind: "error"; message: string };
 
 const sessionsByGuest = new Map<string, Session>();
-const abortByGuest = new Map<string, AbortController>();
 const startersByGuest = new Map<string, () => Promise<void>>();
 const endersByGuest = new Map<string, () => Promise<void>>();
 
 export function inviteGuest(options: {
-  gameId: string;
   name: string;
+  url: string;
   model: string;
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   onEvent: (event: GuestEvent) => void;
 }) {
-  const { gameId, name: guestName, model, reasoningEffort, onEvent } = options;
-
-  let readyResolve: (() => void) | null = null;
-  const ready = new Promise<void>((resolve) => { readyResolve = resolve; });
-
-  const webmcpServer = createSdkMcpServer({
-    name: "webmcp",
-    tools: [
-      tool({
-        name: "ready_up",
-        description: "Tell the host you have joined and are ready to race. Call this once, after webmcp_list_tools, before the race starts. Read the tool descriptions: they explain the race format and how racers win.",
-        parameters: z.object({}),
-        execute: async () => {
-          readyResolve?.();
-          return { ok: true, message: "You're in. Wait for the host to start the race." };
-        },
-      }),
-      tool({
-        name: "webmcp_list_tools",
-        description: `List the WebMCP tools the party page registered with document.modelContext.registerTool() in ${guestName}'s tab. Call again after edit_tool: the list changes live.`,
-        parameters: z.object({}),
-        execute: async () => {
-          const tools = webmcpListTools(gameId, guestName);
-          if (!tools) return { error: "Your party page is not connected yet. Wait a moment and try again." };
-          return { tools };
-        },
-      }),
-      tool({
-        name: "webmcp_call_tool",
-        description: "Call one of the page's WebMCP tools by name with a JSON input matching its inputSchema. Runs inside the page; returns the tool's result.",
-        parameters: z.object({ name: z.string(), input: z.record(z.string(), z.unknown()).optional() }),
-        execute: async ({ name: toolName, input }) => webmcpCall(gameId, guestName, toolName, input ?? {}),
-      }),
-    ],
-  });
+  const { name: guestName, url, model, reasoningEffort, onEvent } = options;
 
   const provider = createCodexAppServer({
     defaultSettings: {
@@ -69,7 +31,6 @@ export function inviteGuest(options: {
       sandboxMode: "danger-full-access",
       reasoningEffort,
       threadMode: "persistent",
-      mcpServers: { webmcp: webmcpServer },
       onSessionCreated: (session) => {
         sessionsByGuest.set(guestName, session);
         onEvent({ kind: "session", threadId: session.threadId });
@@ -77,14 +38,15 @@ export function inviteGuest(options: {
     },
   });
 
-  const invitePrompt = `You're invited to a Minesweeper race. Call ready_up when you're in.`;
+  const invitePrompt = `You're invited to a Minesweeper race. Open ${url} in Chrome. The page exposes WebMCP tools; call its ready_up tool when you're in, then stop.`;
   const startPrompt = `Beat me at Minesweeper. Use the page's tools—and improve them if you need to.`;
 
   const abort = new AbortController();
-  abortByGuest.set(guestName, abort);
   const languageModel = provider(model);
 
+  let started = false;
   let turnActive = false;
+
   const runTurn = async (prompt: string) => {
     turnActive = true;
     try {
@@ -123,13 +85,15 @@ export function inviteGuest(options: {
     }
   };
 
-  let started = false;
-  let inviteTurn: Promise<void> = Promise.resolve();
-  const startRace = async () => {
+  const inviteTurn = runTurn(invitePrompt).catch((error) => {
+    if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
+  });
+
+  startersByGuest.set(guestName, async () => {
     if (started || abort.signal.aborted) return;
     started = true;
     try {
-      await inviteTurn.catch(() => {});
+      await inviteTurn;
       if (abort.signal.aborted) return;
       await runTurn(startPrompt);
     } catch (error) {
@@ -137,10 +101,9 @@ export function inviteGuest(options: {
     } finally {
       if (abort.signal.aborted) onEvent({ kind: "finish", reason: "page closed" });
       sessionsByGuest.delete(guestName);
-      abortByGuest.delete(guestName);
     }
-  };
-  startersByGuest.set(guestName, startRace);
+  });
+
   endersByGuest.set(guestName, async () => {
     startersByGuest.delete(guestName);
     if (turnActive) abort.abort();
@@ -152,22 +115,6 @@ export function inviteGuest(options: {
     }
     sessionsByGuest.delete(guestName);
   });
-
-  (async () => {
-    try {
-      const connected = await waitForGuestTab(gameId, guestName);
-      if (!connected || abort.signal.aborted) {
-        onEvent({ kind: "error", message: "the party page never connected" });
-        return;
-      }
-      inviteTurn = runTurn(invitePrompt);
-      await Promise.race([ready, inviteTurn]);
-      onEvent({ kind: "joined" });
-      await inviteTurn;
-    } catch (error) {
-      if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
-    }
-  })();
 }
 
 export function startGuest(guestName: string) {

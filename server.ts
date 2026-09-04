@@ -23,18 +23,20 @@ export type ToolDefinition = {
   deleted?: boolean;
 };
 
+const RACE_RULES =
+  "Race format: a timed sprint against a human on identical boards. Score = boards solved before time runs out. When a board ends (solved or mine) the next board loads. Each tool call costs seconds of round trip, so one cell per call loses. Winning racers write one tool with edit_tool that solves the board by deduction, guesses when stuck, calls game.nextBoard() when the board ends, and repeats until game.secondsLeft() is 0.";
+
 const DEFAULT_TOOLS: ToolDefinition[] = [
   {
     name: "look_at_board",
-    description:
-      "See your Minesweeper board as text. '#' hidden, 'F' flag, digits are adjacent-mine counts. Also returns status, moves and seconds. Row and col are zero-indexed. The human you are racing plays the same board with a mouse. Every tool on this page can be rewritten with edit_tool, including this one, and your changes stay for every agent after you.",
+    description: `See your board as text: '#' hidden, 'F' flag, digits are adjacent-mine counts. Rows and cols are zero-indexed. Also returns status, boardsSolved and secondsLeft. ${RACE_RULES}`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    code: `return { board: game.text(), ...game.summary() };`,
+    code: `return { board: game.text(), ...game.summary(), boardsSolved: game.boardsSolved(), secondsLeft: game.secondsLeft() };`,
     by: "host",
   },
   {
     name: "reveal_cell",
-    description: "Reveal one cell. Hitting a mine loses the race. Returns the updated board.",
+    description: "Reveal one cell. Slow: one call per cell. A mine ends the board and the next board loads. Returns the updated board.",
     inputSchema: {
       type: "object",
       properties: { row: { type: "integer" }, col: { type: "integer" } },
@@ -46,7 +48,7 @@ const DEFAULT_TOOLS: ToolDefinition[] = [
   },
   {
     name: "flag_cell",
-    description: "Toggle a flag on one hidden cell. Returns the updated board.",
+    description: "Toggle a flag on one hidden cell. Flags are optional; they do not score.",
     inputSchema: {
       type: "object",
       properties: { row: { type: "integer" }, col: { type: "integer" } },
@@ -60,8 +62,10 @@ const DEFAULT_TOOLS: ToolDefinition[] = [
 
 export const EDIT_TOOL: Omit<ToolDefinition, "code"> = {
   name: "edit_tool",
-  description:
-    "Create or rewrite any tool on this page, for you and every agent after you. Provide name, description, a JSON Schema inputSchema, and code: a JavaScript function body that receives (game, input) and returns a JSON-serializable result. game API: game.rows, game.cols, game.view() -> string[][] of '#', 'F', '*', or digit; game.text() -> printable board; game.reveal(row, col); game.toggleFlag(row, col); game.neighbors(row, col) -> [row, col][]; game.summary(). Takes effect immediately. Example code: 'let revealed = 0; for (const [row, col] of input.cells) { const result = game.reveal(row, col); if (result.hitMine) break; revealed++; } return { revealed, board: game.text(), ...game.summary() };'",
+  description: `Create or rewrite any tool on this page. Your tool stays for every racer after you. Provide name, description, a JSON Schema inputSchema, and code: a JavaScript function body receiving (game, input) that returns a JSON-serializable result.
+game API: game.rows, game.cols, game.mines; game.view() -> string[][] of '#', 'F', '*' or digit; game.text(); game.reveal(row, col) -> {ok, hitMine, opened, status}; game.toggleFlag(row, col); game.neighbors(row, col) -> [row, col][]; game.summary() -> {status, cellsLeft, ...}; game.nextBoard() -> loads the next board once status is 'won' or 'lost'; game.secondsLeft(); game.boardsSolved().
+${RACE_RULES}
+Skeleton that wins: while (game.secondsLeft() > 0) { start with a reveal at the centre; loop: for every revealed digit, if hidden neighbours == remaining mines flag them, if flagged neighbours == digit reveal the rest; when no deduction applies, reveal the hidden cell with the fewest adjacent constraints; stop when status is 'won' or 'lost'; then game.nextBoard(); } return { boardsSolved: game.boardsSolved() }. Keep loops bounded so the call returns before time runs out.`,
   inputSchema: {
     type: "object",
     properties: {

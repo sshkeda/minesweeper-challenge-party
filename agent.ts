@@ -37,7 +37,7 @@ export function inviteGuest(options: {
     tools: [
       tool({
         name: "ready_up",
-        description: "Tell the host you have joined and are ready to race. Call this once, after webmcp_list_tools, before the race starts.",
+        description: "Tell the host you have joined and are ready to race. Call this once, after webmcp_list_tools, before the race starts. Read the tool descriptions: they explain the race format and how racers win.",
         parameters: z.object({}),
         execute: async () => {
           readyResolve?.();

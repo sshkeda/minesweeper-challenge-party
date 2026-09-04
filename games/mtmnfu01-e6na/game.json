@@ -1,0 +1,38 @@
+{
+  "id": "mtmnfu01-e6na",
+  "createdAt": 1788507923617,
+  "rows": 9,
+  "cols": 9,
+  "mines": 10,
+  "seed": 1350133908,
+  "toolHead": 16,
+  "startHead": 16,
+  "allowRetry": true,
+  "spectate": false,
+  "durationMs": 120000,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "left",
+      "moves": 102,
+      "toolCalls": 10,
+      "toolsEdited": 2,
+      "retries": 2,
+      "solved": 3,
+      "boardIndex": 4,
+      "threadId": "01a06b61-2929-76a3-a31f-080dbf8a6766",
+      "endedAt": 1788507935722
+    }
+  },
+  "human": {
+    "status": "playing",
+    "moves": 102,
+    "retries": 0,
+    "solved": 2,
+    "boardIndex": 5,
+    "startedAt": 1788507934583
+  },
+  "startedAt": 1788507934017,
+  "winner": "Luna-1"
+}

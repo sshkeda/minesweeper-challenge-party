@@ -103,6 +103,15 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
     });
   }
 
+  function settleBoard(): string | undefined {
+    if (engine.status === "won") {
+      solved++;
+      return `Board ${boardIndex + 1} solved. Boards solved: ${solved}.`;
+    }
+    if (engine.status === "lost") return `Mine on board ${boardIndex + 1}. Boards solved: ${solved}.`;
+    return undefined;
+  }
+
   function nextBoard() {
     const game = getGame();
     if (!game) return;
@@ -113,6 +122,24 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
     engine.status = "playing";
     engine.startedAt = startedAt;
   }
+
+  const raceApi = {
+    secondsLeft: () => {
+      const remaining = timeLeftMs();
+      return remaining === null ? null : Math.max(0, Math.round(remaining / 1000));
+    },
+    boardsSolved: () => solved,
+    nextBoard: () => {
+      if (engine.status !== "won" && engine.status !== "lost") return { ok: false, error: "current board is still in play" };
+      const note = settleBoard();
+      void reportCall("next_board", {}, { note, board: engine.text(), ...engine.summary() });
+      nextBoard();
+      const remaining = timeLeftMs();
+      if (remaining !== null && remaining <= 0) return { ok: false, error: "Time is up.", boardsSolved: solved };
+      return { ok: true, board: boardIndex + 1, boardsSolved: solved, secondsLeft: raceApi.secondsLeft() };
+    },
+  };
+  Object.assign(engine, raceApi);
 
   function makeExecute(tool: ToolDefinition) {
     return async (input: unknown) => {
@@ -127,17 +154,11 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       } catch (error) {
         result = { ok: false, error: `tool ${tool.name} threw: ${(error as Error).message}` };
       }
-      let note: string | undefined;
-      if (engine.status === "won") {
-        solved++;
-        note = `Board ${boardIndex + 1} solved. Boards solved: ${solved}. A new board is loaded; call look_at_board.`;
-      } else if (engine.status === "lost") {
-        note = `You hit a mine on board ${boardIndex + 1}. A new board is loaded; call look_at_board.`;
-      }
-      const secondsLeft = remaining === null ? undefined : Math.max(0, Math.round(remaining / 1000));
-      const output = { ...(typeof result === "object" && result ? result : { result }), ...(note ? { note } : {}), secondsLeft, boardsSolved: solved };
+      const ended = engine.status === "won" || engine.status === "lost";
+      const note = ended ? `${settleBoard()} Next board is loaded. Tip: a tool can call game.nextBoard() itself and keep solving boards in one call.` : undefined;
+      const output = { ...(typeof result === "object" && result ? result : { result }), ...(note ? { note } : {}), secondsLeft: raceApi.secondsLeft(), boardsSolved: solved };
       await reportCall(tool.name, input, output);
-      if (engine.status === "won" || engine.status === "lost") nextBoard();
+      if (ended) nextBoard();
       return output;
     };
   }

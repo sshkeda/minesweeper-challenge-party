@@ -178,7 +178,8 @@ function HostView() {
     engineRef.current = engine;
     setHumanView(engine.view());
     setGame(created);
-    await post(`/api/games/${created.id}/invite`, { count: 1, model: settings.model, reasoningEffort: settings.effort });
+    const invited = await post<Game["guests"][string][]>(`/api/games/${created.id}/invite`, { count: 1, model: settings.model, reasoningEffort: settings.effort });
+    setGame((previous) => (previous && previous.id === created.id ? { ...previous, guests: Object.fromEntries(invited.map((invitedGuest) => [invitedGuest.name, invitedGuest])) } : previous));
     setStarting(false);
   }
 
@@ -210,6 +211,7 @@ function HostView() {
   }
 
   const guest = game ? Object.values(game.guests)[0] : undefined;
+  const guestFrames = game && !game.winner ? Object.keys(game.guests) : [];
   const engine = engineRef.current;
   const phase = !game ? "idle" : game.winner ? "done" : "running";
   const resultText = game?.winner === "human" ? "You win." : game?.winner === "nobody" ? "Nobody cleared it." : game?.winner ? `${agentLabel} wins.` : "";
@@ -274,6 +276,10 @@ function HostView() {
           <Transcript entries={agentEntries} from="assistant" emptyTitle={phase === "idle" ? "Luna's moves will show here." : "Waiting for Luna…"} waiting={phase === "running" && agentEntries.length === 0} />
         </section>
       </main>
+
+      {guestFrames.map((name) => (
+        <iframe key={`${game!.id}/${name}`} title={name} src={`/?game=${game!.id}&guest=${encodeURIComponent(name)}`} className="hidden" />
+      ))}
 
       {advanced && (
         <section className="grid grid-cols-2 gap-5 px-6 pb-12">

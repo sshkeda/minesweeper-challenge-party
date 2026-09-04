@@ -1,1 +1,23 @@
-{ "compilerOptions": { "lib": ["ESNext","DOM"], "target": "ESNext", "module": "ESNext", "moduleResolution": "bundler", "types": ["bun-types"], "strict": true, "noEmit": true, "skipLibCheck": true, "allowImportingTsExtensions": true, "jsx": "react-jsx" } }
+{
+  "compilerOptions": {
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [
+      "bun-types"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx"
+  },
+  "exclude": [
+    "web",
+    "node_modules"
+  ]
+}

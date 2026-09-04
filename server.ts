@@ -1,6 +1,6 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { inviteGuest, heckleGuest, type GuestEvent } from "./agent";
+import { inviteGuest, heckleGuest, endGuest, type GuestEvent } from "./agent";
 
 const PORT = Number(process.env.PORT ?? 4321);
 const APP_URL = process.env.APP_URL ?? "http://localhost:5173";
@@ -442,7 +442,6 @@ const server = Bun.serve<{ gameId?: string }>({
           game.guests[guestName] = guest;
           invited.push(guest);
           const url = `${APP_URL}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
-          Bun.spawn(["open", "-a", "Google Chrome", url]).exited.catch(() => {});
           waitForGuestTab(game.id, guestName).then((connected) => {
             if (!connected) appendTranscript(game.id, guestName, { kind: "error", message: "guest tab never connected" });
           });
@@ -517,7 +516,21 @@ const server = Bun.serve<{ gameId?: string }>({
     },
     close(socket) {
       sockets.delete(socket);
-      for (const [key, tab] of guestTabs) if (tab.socket === socket) guestTabs.delete(key);
+      for (const [key, tab] of guestTabs) {
+        if (tab.socket !== socket) continue;
+        guestTabs.delete(key);
+        const [gameId, guestName] = key.split("/");
+        endGuest(guestName);
+        const game = games.get(gameId);
+        const guest = game?.guests[guestName];
+        if (game && guest && (guest.status === "arriving" || guest.status === "playing")) {
+          guest.status = "left";
+          guest.endedAt = Date.now();
+          saveGame(game);
+          broadcast({ type: "guest", gameId, guest });
+          settleWinner(game);
+        }
+      }
     },
     message(socket, raw) {
       let message: any;

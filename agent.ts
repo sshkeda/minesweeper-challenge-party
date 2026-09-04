@@ -15,6 +15,7 @@ export type GuestEvent =
   | { kind: "error"; message: string };
 
 const sessionsByGuest = new Map<string, Session>();
+const abortByGuest = new Map<string, AbortController>();
 
 export function inviteGuest(options: {
   gameId: string;
@@ -64,10 +65,17 @@ export function inviteGuest(options: {
 
   const prompt = `Beat me at Minesweeper. Your board is already open at ${url}; play only through the page's WebMCP tools (webmcp_list_tools, then webmcp_call_tool) and never click the page. Your name tonight is ${guestName}.`;
 
+  const abort = new AbortController();
+  abortByGuest.set(guestName, abort);
+
   (async () => {
     try {
-      await waitForGuestTab(gameId, guestName);
-      const result = streamText({ model: provider(model), prompt });
+      const connected = await waitForGuestTab(gameId, guestName);
+      if (!connected || abort.signal.aborted) {
+        onEvent({ kind: "error", message: "the party page never connected" });
+        return;
+      }
+      const result = streamText({ model: provider(model), prompt, abortSignal: abort.signal });
       for await (const part of result.fullStream) {
         switch (part.type) {
           case "text-delta":
@@ -98,11 +106,23 @@ export function inviteGuest(options: {
         }
       }
     } catch (error) {
-      onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
+      if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
     } finally {
+      if (abort.signal.aborted) onEvent({ kind: "finish", reason: "page closed" });
       sessionsByGuest.delete(guestName);
+      abortByGuest.delete(guestName);
     }
   })();
+}
+
+export async function endGuest(guestName: string) {
+  const session = sessionsByGuest.get(guestName);
+  abortByGuest.get(guestName)?.abort();
+  if (session?.isActive()) {
+    try {
+      await session.interrupt();
+    } catch {}
+  }
 }
 
 export async function heckleGuest(guestName: string, message: string): Promise<boolean> {

@@ -1,0 +1,32 @@
+{
+  "id": "mtmm5061-osgl",
+  "createdAt": 1788505738777,
+  "rows": 9,
+  "cols": 9,
+  "mines": 10,
+  "seed": 1963977798,
+  "toolHead": 8,
+  "startHead": 8,
+  "allowRetry": true,
+  "spectate": false,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "playing",
+      "moves": 0,
+      "toolCalls": 4,
+      "toolsEdited": 1,
+      "retries": 1,
+      "threadId": "01a06b3f-d1e3-7040-8560-8f179f41c237",
+      "startedAt": 1788505788053
+    }
+  },
+  "human": {
+    "status": "lost",
+    "moves": 2,
+    "retries": 0,
+    "startedAt": 1788505746003,
+    "endedAt": 1788505752498
+  }
+}

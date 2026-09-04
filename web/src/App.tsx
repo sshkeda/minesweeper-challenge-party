@@ -224,8 +224,8 @@ function HostView() {
         </label>
       </header>
 
-      <main className="grid grid-cols-[minmax(240px,1fr)_auto_220px_auto_minmax(240px,1fr)] items-start gap-5 px-6 pb-10">
-        <section className="h-[70vh] min-h-0">
+      <main className="grid grid-cols-[minmax(0,1fr)_auto_200px_auto_minmax(0,1fr)] items-start gap-5 px-6 pb-10">
+        <section className="h-[70vh] min-h-0 min-w-0">
           <div className="mb-2 text-sm font-medium">You</div>
           <Transcript entries={humanEntries} from="user" emptyTitle={phase === "idle" ? "Your moves will show here." : "Make a move."} />
         </section>
@@ -265,7 +265,7 @@ function HostView() {
           <Board view={agentView} rows={game?.rows ?? settings.rows} cols={game?.cols ?? settings.cols} dimmed={phase !== "running"} />
         </section>
 
-        <section className="h-[70vh] min-h-0">
+        <section className="h-[70vh] min-h-0 min-w-0">
           <div className="mb-2 flex items-center gap-2 text-sm font-medium">
             {agentLabel}
             <Badge variant="outline" className="text-[10px]">{settings.effort} effort</Badge>

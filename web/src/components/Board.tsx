@@ -29,11 +29,11 @@ export function Board({
   onFlag?: (row: number, col: number) => void;
   dimmed?: boolean;
 }) {
-  const size = cols > 16 ? 22 : cols > 12 ? 28 : 36;
+  const size = cols > 16 ? 20 : cols > 12 ? 26 : 32;
   const interactive = !!onReveal;
   return (
     <div
-      className={cn("inline-grid gap-[2px] rounded-lg border border-border bg-black/40 p-2 select-none", dimmed && "opacity-60")}
+      className={cn("inline-grid gap-[2px] rounded-lg border border-border bg-black/40 p-2 select-none", dimmed && "opacity-80")}
       style={{ gridTemplateColumns: `repeat(${cols}, ${size}px)` }}
       onContextMenu={(event) => event.preventDefault()}
     >
@@ -51,8 +51,8 @@ export function Board({
             style={{ width: size, height: size }}
             className={cn(
               "flex items-center justify-center rounded-[5px] font-bold text-sm transition-colors",
-              !isOpen && value !== "F" && "bg-zinc-700",
-              interactive && !isOpen && "hover:bg-zinc-600",
+              !isOpen && value !== "F" && "bg-zinc-600",
+              interactive && !isOpen && "hover:bg-zinc-500",
               isOpen && "bg-zinc-900",
               value === "*" && "bg-red-600",
               value === "F" && "bg-amber-900/70",

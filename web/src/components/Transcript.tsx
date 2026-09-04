@@ -29,7 +29,7 @@ export function Transcript({
   return (
     <Conversation className="h-full min-h-0 rounded-lg border border-border bg-card/40">
       <ConversationContent className="gap-3 p-3">
-        {entries.length === 0 && !waiting && <ConversationEmptyState title={emptyTitle} description={emptyDescription} />}
+        {entries.length === 0 && !waiting && <ConversationEmptyState title={emptyTitle} description={emptyDescription ?? ""} />}
         {entries.map((entry) => (
           <Message key={entry.id} from={from} className="max-w-full">
             <MessageContent className="w-full max-w-full">

@@ -35,6 +35,9 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
     );
   }
 
+  const nativelyRegistered = new Set<string>();
+  const nativeUnregisterTool = (document.modelContext as { unregisterTool?: (name: string) => void } | undefined)?.unregisterTool?.bind(document.modelContext) ?? null;
+
   async function registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }) {
     registry.set(tool.name, tool);
     options?.signal?.addEventListener("abort", () => {
@@ -42,7 +45,13 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       publishTools();
     });
     publishTools();
-    if (nativeRegisterTool) await nativeRegisterTool(tool, options);
+    if (!nativeRegisterTool) return;
+    if (nativelyRegistered.has(tool.name)) {
+      if (!nativeUnregisterTool) return;
+      nativeUnregisterTool(tool.name);
+    }
+    nativelyRegistered.add(tool.name);
+    await nativeRegisterTool({ ...tool, execute: (input: unknown) => (registry.get(tool.name) ?? tool).execute(input) });
   }
 
   if (!native) document.modelContext = { registerTool };

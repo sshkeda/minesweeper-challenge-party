@@ -13,18 +13,20 @@
     "Luna-1": {
       "name": "Luna-1",
       "hat": "🎩",
-      "status": "playing",
-      "moves": 3,
-      "toolCalls": 5,
+      "status": "won",
+      "moves": 18,
+      "toolCalls": 19,
       "toolsEdited": 0,
-      "retries": 1,
+      "retries": 4,
       "threadId": "01a06b26-7670-7873-8217-f2e2eece527d",
-      "startedAt": 1788504108417
+      "startedAt": 1788504108417,
+      "endedAt": 1788504187951
     }
   },
   "human": {
     "status": "ready",
     "moves": 0,
     "retries": 0
-  }
+  },
+  "winner": "Luna-1"
 }

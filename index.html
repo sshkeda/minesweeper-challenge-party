@@ -49,14 +49,15 @@
 <body>
 <header>
   <h1>🎉 Minesweeper Challenge Party</h1>
-  <label class="toggle"><input type="checkbox" id="advanced-toggle"> Advanced mode</label>
+  <label class="toggle"><input type="checkbox" id="advanced-toggle"> Settings</label>
 </header>
 
 <main>
   <section class="center" id="lobby">
+    <h2 style="font-size:34px;margin:0 0 6px">Race an AI at Minesweeper</h2>
     <p id="lobby-text">Connecting…</p>
-    <button class="cta" id="start" disabled>Start game</button>
-    <p class="hint">You get one life. Luna gets retries. First to clear the board wins.</p>
+    <button class="cta" id="start" disabled>Start the race</button>
+    <p class="hint">You click. Luna uses tools. First to clear the board wins.<br>You get one life. Luna gets to retry.</p>
   </section>
 
   <section class="result" id="result" style="display:none"><h2 id="result-text"></h2><button class="cta" id="again">Play again</button></section>
@@ -65,37 +66,37 @@
     <div class="side" id="human-side">
       <div class="side-head"><h2>🧑 You</h2><span class="timer" id="human-timer">0.0s</span></div>
       <div class="board" id="human-board"></div>
-      <div class="lives" id="human-lives">1 life · left click reveals · right click flags</div>
+      <div class="lives" id="human-lives">One life. Left click to dig, right click to flag.</div>
       <div class="log" id="human-log"></div>
     </div>
     <div class="side" id="agent-side">
       <div class="side-head"><h2 id="agent-title">🎩 Luna</h2><span class="timer" id="agent-timer">0.0s</span></div>
       <div class="board agent" id="agent-board"></div>
-      <div class="lives" id="agent-lives">Unlimited retries · plays only through WebMCP tools</div>
-      <div class="webmcp" id="webmcp"></div>
+      <div class="lives" id="agent-lives">Luna can retry. No mouse, only tools.</div>
+      <div class="webmcp" id="webmcp" style="display:none"></div>
       <div class="log" id="agent-log"></div>
     </div>
   </section>
 
   <section class="advanced">
     <div class="panel">
-      <h3>Game settings</h3>
+      <h3>Settings</h3>
       <div class="row"><div><label>Rows</label><input id="setting-rows" type="number" value="9" min="4" max="30"></div><div><label>Cols</label><input id="setting-cols" type="number" value="9" min="4" max="40"></div><div><label>Mines</label><input id="setting-mines" type="number" value="10" min="1"></div></div>
       <div class="row"><div><label>Model</label><select id="setting-model"><option>gpt-5.6-luna</option><option>gpt-5.6-sol</option><option>gpt-5.6-terra</option><option>gpt-5.5</option></select></div><div><label>Effort</label><select id="setting-effort"><option>low</option><option>medium</option><option>high</option></select></div><div><label>Guests</label><input id="setting-guests" type="number" value="1" min="1" max="8"></div></div>
-      <label>Tool config seed</label><select id="setting-head"><option value="">Latest (everything ever written)</option><option value="0">Default only</option></select>
+      <label>Which tools Luna starts with</label><select id="setting-head"><option value="">Everything Luna has ever built</option><option value="0">Just the basics</option></select>
       <label>Board seed (blank = random)</label><input id="setting-seed" placeholder="random">
-      <div class="check"><input id="setting-retry" type="checkbox" checked><span>Luna may retry after a mine</span></div>
-      <div class="check"><input id="setting-spectate" type="checkbox"><span>Skip me, just watch</span></div>
-      <div class="check"><input id="setting-samelayout" type="checkbox"><span>Reuse last board layout</span></div>
+      <div class="check"><input id="setting-retry" type="checkbox" checked><span>Luna can retry after a mine</span></div>
+      <div class="check"><input id="setting-spectate" type="checkbox"><span>I just want to watch Luna</span></div>
+      <div class="check"><input id="setting-samelayout" type="checkbox"><span>Same board as last time</span></div>
       <h3 style="margin-top:16px">Past games</h3><div class="games" id="games"></div>
     </div>
     <div class="panel">
-      <h3>Tools on the table <small id="head-pill"></small></h3>
+      <h3>Luna's tools <small id="head-pill"></small></h3>
       <div id="stones"></div>
-      <details class="stone"><summary>＋ Write a tool</summary>
+      <details class="stone"><summary>＋ Give Luna a tool</summary>
         <label>Name</label><input id="new-name" placeholder="reveal_many"><label>Description</label><input id="new-desc"><label>Input schema</label><textarea id="new-schema">{"type":"object","properties":{"cells":{"type":"array"}},"required":["cells"]}</textarea><label>Code (game, input)</label><textarea id="new-code">let revealed=0; for (const [row,col] of input.cells) { const result=game.reveal(row,col); if (result.hitMine) break; revealed++; } return { revealed, board: game.text(), ...game.summary() };</textarea>
         <button id="save-new-tool" style="margin-top:8px">Save</button></details>
-      <h3 style="margin-top:16px">Transcript</h3>
+      <h3 style="margin-top:16px">What Luna did, step by step</h3>
       <div class="row"><select id="transcript-guest"></select><button id="transcript-load">Load</button></div>
       <pre id="transcript-body"></pre>
     </div>
@@ -214,14 +215,14 @@ socket.onmessage=(event)=>{
 
 function updateLobby(){
   const ready=socketReady&&toolsReady;
-  byId("lobby-text").textContent=ready?"Luna is waiting. Ready when you are.":"Connecting…";
+  byId("lobby-text").textContent=ready?"Luna is here. Ready when you are.":"Connecting…";
   byId("start").disabled=!ready;
 }
 
 async function loadTools(){ const config=await api(GAME_ID?`/api/tools?game=${GAME_ID}`:"/api/tools"); tools=config.tools; toolHead=config.head; toolsReady=true; renderTools(); fillHeadOptions(config.entries||[]); updateLobby(); }
 
 async function startGame(){
-  byId("start").disabled=true; byId("start").textContent="Inviting Luna…";
+  byId("start").disabled=true; byId("start").textContent="Calling Luna…";
   const settings={
     rows:+byId("setting-rows").value, cols:+byId("setting-cols").value, mines:+byId("setting-mines").value,
     seed: byId("setting-seed").value? +byId("setting-seed").value : undefined,
@@ -233,12 +234,12 @@ async function startGame(){
   byId("human-log").innerHTML=""; byId("agent-log").innerHTML="";
   for(const side of ["human-side","agent-side"]) byId(side).classList.remove("won","lost");
   byId("human-side").style.display=game.spectate?"none":"";
-  byId("agent-lives").textContent=game.allowRetry?"Unlimited retries · plays only through WebMCP tools":"One life · plays only through WebMCP tools";
+  byId("agent-lives").textContent=game.allowRetry?"Luna can retry. No mouse, only tools.":"Luna gets one life too. No mouse, only tools.";
   startHumanBoard();
   renderView(byId("agent-board"), null, game.rows, game.cols);
-  logLine(byId("agent-log"),"Inviting Luna to the party…","muted");
+  logLine(byId("agent-log"),"Calling Luna…","muted");
   await api(`/api/games/${game.id}/invite`,{method:"POST",body:JSON.stringify({count:+byId("setting-guests").value,model:byId("setting-model").value,reasoningEffort:byId("setting-effort").value})});
-  byId("start").textContent="Start game"; loadGames();
+  byId("start").textContent="Start the race"; loadGames();
 }
 byId("start").onclick=startGame;
 byId("again").onclick=()=>{ byId("result").style.display="none"; byId("race").style.display="none"; byId("lobby").style.display=""; byId("start").disabled=false; };
@@ -248,8 +249,8 @@ function startHumanBoard(){
   engine=new Minesweeper({rows:game.rows,cols:game.cols,mines:game.mines,seed:game.seed});
   const element=byId("human-board");
   engine.onChange=()=>renderBoard(element,engine);
-  renderBoard(element,engine,{reveal:(row,col)=>humanMove(()=>engine.reveal(row,col),`You revealed (${row},${col})`),flag:(row,col)=>humanMove(()=>engine.toggleFlag(row,col),`You flagged (${row},${col})`)});
-  byId("human-lives").textContent="1 life · left click reveals · right click flags";
+  renderBoard(element,engine,{reveal:(row,col)=>humanMove(()=>engine.reveal(row,col),`You dug (${row},${col})`),flag:(row,col)=>humanMove(()=>engine.toggleFlag(row,col),`You flagged (${row},${col})`)});
+  byId("human-lives").textContent="One life. Left click to dig, right click to flag.";
   clearInterval(humanTimer); humanTimer=setInterval(()=>{ byId("human-timer").textContent=(game.human.startedAt? ((game.human.endedAt||Date.now())-game.human.startedAt)/1000 : 0).toFixed(1)+"s"; },100);
 }
 async function humanMove(action, label){
@@ -258,8 +259,8 @@ async function humanMove(action, label){
   const patch={moves:game.human.moves+1};
   if(wasReady&&!game.human.startedAt){ patch.status="playing"; patch.startedAt=Date.now(); }
   logLine(byId("human-log"), result.opened>1?`${label}, opened ${result.opened} cells`:label);
-  if(engine.status==="won"){ patch.status="won"; patch.endedAt=Date.now(); logLine(byId("human-log"),"You cleared the board!","good"); byId("human-side").classList.add("won"); fanfare(); }
-  if(engine.status==="lost"){ patch.status="lost"; patch.endedAt=Date.now(); logLine(byId("human-log"),"You hit a mine. One life, remember?","bad"); byId("human-side").classList.add("lost"); trombone(); }
+  if(engine.status==="won"){ patch.status="won"; patch.endedAt=Date.now(); logLine(byId("human-log"),"You cleared the board! 🏁","good"); byId("human-side").classList.add("won"); fanfare(); }
+  if(engine.status==="lost"){ patch.status="lost"; patch.endedAt=Date.now(); logLine(byId("human-log"),"💥 You hit a mine. That was your one life.","bad"); byId("human-side").classList.add("lost"); trombone(); }
   Object.assign(game.human,patch);
   game.human=await api(`/api/games/${game.id}/human`,{method:"POST",body:JSON.stringify(patch)});
 }
@@ -276,18 +277,18 @@ setInterval(()=>{ if(!game||GUEST_NAME) return; const guest=Object.values(game.g
 const thinking={};
 function describe(guestName, event){
   const log=byId("agent-log"); const who=Object.keys(game.guests).length>1?`${guestName} `:"Luna ";
-  if(event.kind==="session"){ logLine(log,`${who}arrived at the party.`,"muted"); beep(660,.08); return; }
+  if(event.kind==="session"){ logLine(log,`${who}is here.`,"muted"); beep(660,.08); return; }
   if(event.kind==="reasoning"){ if(!thinking[guestName]||thinking[guestName].parentNode!==log){ thinking[guestName]=document.createElement("div"); thinking[guestName].className="think"; log.appendChild(thinking[guestName]); } thinking[guestName].textContent+=event.text; log.scrollTop=log.scrollHeight; return; }
   delete thinking[guestName];
   if(event.kind==="text"){ if(event.text.trim()) logLine(log,`${who}says: ${event.text.trim()}`,"muted"); return; }
   if(event.kind==="tool-call"){
     const args=event.input?.arguments||{};
-    if(/webmcp_list_tools/.test(event.toolName)) return logLine(log,`${who}is reading the tools on the table.`,"tool");
+    if(/webmcp_list_tools/.test(event.toolName)) return logLine(log,`${who}is checking what tools it has.`,"tool");
     if(/webmcp_call_tool/.test(event.toolName)){
       const name=args.name, input=args.input||{};
-      if(name==="edit_tool"){ logLine(log,`🛠 ${who}wrote a new tool: ${input.name}. It stays for every future guest.`,"big"); banner(`🛠 ${guestName} is rewriting the tools`); beep(1200,.1,"triangle"); return; }
+      if(name==="edit_tool"){ logLine(log,`🛠 ${who}built itself a new tool: ${input.name}. Every future Luna gets it too.`,"big"); banner(`🛠 Luna is building a new tool`); beep(1200,.1,"triangle"); return; }
       if(name==="look_at_board") return logLine(log,`${who}looked at the board.`,"tool");
-      if(name==="reveal_cell") return logLine(log,`${who}revealed (${input.row},${input.col}).`,"tool");
+      if(name==="reveal_cell") return logLine(log,`${who}dug (${input.row},${input.col}).`,"tool");
       if(name==="flag_cell") return logLine(log,`${who}flagged (${input.row},${input.col}).`,"tool");
       return logLine(log,`${who}used ${name}${Object.keys(input).length?" "+JSON.stringify(input):""}.`,"tool");
     }
@@ -295,19 +296,19 @@ function describe(guestName, event){
   }
   if(event.kind==="tool-result"){
     const text=JSON.stringify(event.output||"");
-    if(/"hitMine": ?true/.test(text)){ logLine(log,game.allowRetry?`💥 ${who}hit a mine. Retrying on the same layout.`:`💥 ${who}hit a mine. Out.`,"bad"); trombone(); }
+    if(/"hitMine": ?true/.test(text)){ logLine(log,game.allowRetry?`💥 ${who}hit a mine. Trying again.`:`💥 ${who}hit a mine. Out.`,"bad"); trombone(); }
     else if(/"status": ?"won"/.test(text)){ logLine(log,`🏁 ${who}cleared the board!`,"good"); confetti(); fanfare(); }
     else if(/"opened": ?(\d+)/.test(text)){ const opened=+text.match(/"opened": ?(\d+)/)[1]; if(opened>1) logLine(log,`${who}opened ${opened} cells.`,"muted"); }
     return;
   }
-  if(event.kind==="finish") logLine(log,`${who}left the party.`,"muted");
-  if(event.kind==="error") logLine(log,`${who}ran into trouble: ${event.message}`,"bad");
+  if(event.kind==="finish") logLine(log,`${who}is done.`,"muted");
+  if(event.kind==="error") logLine(log,`${who}had a problem: ${event.message}`,"bad");
   if(event.kind==="heckle") logLine(log,`📣 ${event.text}`,"muted");
 }
 
 function showResult(){
   byId("result").style.display="";
-  const text=game.winner==="human"?"🧑 You win. For now.":game.winner==="nobody"?"Nobody cleared it. Awkward.":`${game.winner} wins. Told you.`;
+  const text=game.winner==="human"?"🧑 You win! For now.":game.winner==="nobody"?"Nobody cleared it.":`🎩 Luna wins.`;
   byId("result-text").textContent=text; if(game.winner!=="nobody") confetti(120); banner(text,6000); loadGames();
 }
 
@@ -326,7 +327,7 @@ function renderTools(){
     container.appendChild(details);
   }
 }
-function fillHeadOptions(entries){ const select=byId("setting-head"); const keep=select.value; select.innerHTML=`<option value="">Latest (everything ever written)</option><option value="0">Default only</option>`; for(const entry of entries.slice(-40).reverse()){ let name=""; try{ name=JSON.parse(entry.content).name; }catch{} const option=document.createElement("option"); option.value=entry.id; option.textContent=`#${entry.id} · ${name} · ${new Date(entry.datetime).toLocaleTimeString()}`; select.appendChild(option);} select.value=keep; }
+function fillHeadOptions(entries){ const select=byId("setting-head"); const keep=select.value; select.innerHTML=`<option value="">Everything Luna has ever built</option><option value="0">Just the basics</option>`; for(const entry of entries.slice(-40).reverse()){ let name=""; try{ name=JSON.parse(entry.content).name; }catch{} const option=document.createElement("option"); option.value=entry.id; option.textContent=`#${entry.id} · ${name} · ${new Date(entry.datetime).toLocaleTimeString()}`; select.appendChild(option);} select.value=keep; }
 byId("save-new-tool").onclick=async()=>{ let schema; try{ schema=JSON.parse(byId("new-schema").value);}catch{ return alert("schema is not JSON"); } const saved=await api("/api/tools",{method:"POST",body:JSON.stringify({name:byId("new-name").value,description:byId("new-desc").value,inputSchema:schema,code:byId("new-code").value,by:"host",gameId:game?.id})}); if(saved.error) alert(saved.error); else banner(`🪨 ${saved.name} is on the table`); };
 async function loadGames(){ const games=await api("/api/games"); byId("games").innerHTML=games.slice(0,20).map((entry)=>`<div><span>${new Date(entry.createdAt).toLocaleTimeString()} · ${entry.rows}×${entry.cols}/${entry.mines} · ${Object.keys(entry.guests).length} guests</span><b>${entry.winner||"…"}</b></div>`).join(""); const select=byId("transcript-guest"); select.innerHTML=""; for(const entry of games.slice(0,20)) for(const guestName of Object.keys(entry.guests)){ const option=document.createElement("option"); option.value=`${entry.id}/${guestName}`; option.textContent=`${new Date(entry.createdAt).toLocaleTimeString()} · ${guestName}`; select.appendChild(option);} }
 byId("transcript-load").onclick=async()=>{ const [gameId,guestName]=byId("transcript-guest").value.split("/"); const events=await api(`/api/games/${gameId}/transcript/${encodeURIComponent(guestName)}`); const calls=await api(`/api/games/${gameId}/tool-calls`); byId("transcript-body").textContent="— Agent (Codex thread) —\n"+events.map((event)=>`${new Date(event.t).toLocaleTimeString()} ${event.kind} ${event.text??event.toolName??""} ${event.input?JSON.stringify(event.input).slice(0,300):""}${event.threadId?" "+event.threadId:""}${event.message?" "+event.message:""}`).join("\n")+"\n\n— Page (WebMCP executions) —\n"+calls.filter((call)=>call.guest===guestName).map((call)=>`${new Date(call.t).toLocaleTimeString()} ${call.tool} ${JSON.stringify(call.input)} → ${JSON.stringify(call.result).slice(0,300)}`).join("\n"); };
@@ -361,7 +362,7 @@ async function registerWebMCP(){
       await reportCall("edit_tool",input,output); return output; }}];
   let registered=0;
   for(const definition of definitions){ try{ await document.modelContext.registerTool(definition,{signal:registrationAbort.signal}); registered++; }catch(error){ console.warn("registerTool failed",definition.name,error); } }
-  byId("webmcp").textContent=`WebMCP (${nativeWebMCP?"native":"page shim, bridged to Codex over MCP"}): ${registered} tools · ${definitions.map((definition)=>definition.name).join(", ")}`;
+  byId("webmcp").textContent=`${registered} tools ready for Luna`;
 }
 
 async function guestMain(){
@@ -369,7 +370,7 @@ async function guestMain(){
   game=await api(`/api/games/${GAME_ID}`); if(game.error) return;
   byId("lobby").style.display="none"; byId("race").style.display=""; byId("human-side").style.display="none";
   byId("agent-title").textContent=`${game.guests[GUEST_NAME]?.hat||"🎩"} ${GUEST_NAME}`;
-  byId("agent-lives").textContent="This page has no buttons for you. Play only through its WebMCP tools. Every tool is editable with edit_tool.";
+  byId("agent-lives").textContent="Luna is playing on this board. You can watch.";
   engine=new Minesweeper({rows:game.rows,cols:game.cols,mines:game.mines,seed:game.seed});
   engine.onChange=()=>renderBoard(byId("agent-board"),engine); renderBoard(byId("agent-board"),engine);
   setInterval(()=>{ byId("agent-timer").textContent=engine.elapsed().toFixed(1)+"s"; },100);

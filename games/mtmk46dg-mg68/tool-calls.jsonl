@@ -1,0 +1,2 @@
+{"t":1788502342289,"kind":"edit_tool","by":"test","tool":"reveal_many","memoId":1}
+{"t":1788502741759,"kind":"tool_call","guest":"Luna-1","tool":"reveal_many","input":{"cells":[]},"result":{"ok":true,"status":"won"}}

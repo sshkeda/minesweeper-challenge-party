@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Minesweeper Challenge Party 🎉</title>
+<style>
+  :root { --bg:#0f0b1e; --panel:#1a1433; --line:#2c2450; --text:#f4efff; --muted:#a79bd6; --pink:#ff5fa2; --lime:#b6ff5f; --cyan:#5fe6ff; --gold:#ffd25f; --red:#ff5f5f; }
+  * { box-sizing:border-box } html,body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  body { background-image: radial-gradient(circle at 10% 10%, #2a1650 0, transparent 40%), radial-gradient(circle at 90% 20%, #113a4a 0, transparent 40%), radial-gradient(circle at 50% 100%, #3a1140 0, transparent 45%); min-height:100vh }
+  a { color:var(--cyan) }
+  header { display:flex; align-items:center; justify-content:space-between; padding:14px 22px; border-bottom:1px solid var(--line); background:rgba(15,11,30,.7); backdrop-filter: blur(8px); position:sticky; top:0; z-index:5 }
+  h1 { margin:0; font-size:26px; letter-spacing:.5px; background:linear-gradient(90deg,var(--pink),var(--gold),var(--lime),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent }
+  .tag { margin:0; color:var(--muted); font-size:13px }
+  .score { display:flex; gap:18px; align-items:center }
+  .score b { font-size:24px; display:block; text-align:center } .score small { color:var(--muted); display:block; text-align:center; text-transform:uppercase; letter-spacing:1px; font-size:10px }
+  main { display:grid; grid-template-columns: 300px 1fr 340px; gap:16px; padding:16px 22px; align-items:start }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px }
+  .panel h3 { margin:0 0 8px; font-size:14px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted) }
+  label { display:block; font-size:12px; color:var(--muted); margin-top:8px }
+  input, select, textarea, button { font:inherit; border-radius:8px; border:1px solid var(--line); background:#120d26; color:var(--text); padding:7px 9px; width:100% }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; min-height:90px }
+  .row { display:flex; gap:8px } .row > * { flex:1 }
+  button { cursor:pointer; background:#25194a; border-color:#3b2c73; transition:transform .08s } button:hover { transform:translateY(-1px) } button:disabled { opacity:.45; cursor:not-allowed }
+  button.primary { background:linear-gradient(90deg,var(--pink),#c65fff); border:none; font-weight:700 }
+  button.lime { background:linear-gradient(90deg,var(--lime),var(--cyan)); color:#111; border:none; font-weight:700 }
+  .check { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px } .check input { width:auto }
+  .arena { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px }
+  .side { text-align:center }
+  .side-head { display:flex; justify-content:space-between; align-items:center; padding:0 4px 8px } .side-head h2 { margin:0; font-size:18px } .timer { font-variant-numeric: tabular-nums; color:var(--gold); font-weight:700 }
+  .board { display:inline-grid; gap:2px; padding:8px; background:#0b0818; border-radius:10px; border:1px solid var(--line); user-select:none }
+  .cell { width:var(--cs,30px); height:var(--cs,30px); display:flex; align-items:center; justify-content:center; border-radius:5px; background:#3a2d6b; font-weight:800; font-size:14px; cursor:pointer; transition:background .1s }
+  .cell:hover { background:#4a3b85 } .cell.open { background:#1c1638; cursor:default } .cell.mine { background:var(--red) } .cell.flag { background:#5d3f1c } .agent .cell { cursor:default }
+  .cell[data-n="1"]{color:#7fd1ff}.cell[data-n="2"]{color:#b6ff5f}.cell[data-n="3"]{color:#ff8a5f}.cell[data-n="4"]{color:#c65fff}.cell[data-n="5"]{color:#ffd25f}.cell[data-n="6"]{color:#5fe6ff}.cell[data-n="7"]{color:#fff}.cell[data-n="8"]{color:#aaa}
+  .hint { color:var(--muted); font-size:12px; margin:8px 0 0 }
+  .status { margin-top:10px; font-size:14px; min-height:20px }
+  .guests { display:flex; flex-direction:column; gap:8px }
+  .guest { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px; background:#120d26; border:1px solid var(--line) }
+  .guest .hat { font-size:24px } .guest .nm { font-weight:700 } .guest .st { font-size:12px; color:var(--muted) }
+  .guest.playing { border-color:var(--cyan) } .guest.won { border-color:var(--lime) } .guest.lost { border-color:var(--red) } .guest.error { border-color:#ff9f5f }
+  .guest button { width:auto; padding:4px 8px; font-size:12px }
+  .chatter { height:360px; overflow:auto; display:flex; flex-direction:column; gap:6px; font-size:13px; padding-right:4px }
+  .bubble { padding:7px 10px; border-radius:12px; max-width:100%; white-space:pre-wrap; word-break:break-word }
+  .bubble.text { background:#2a1f55 } .bubble.reasoning { background:transparent; color:var(--muted); font-style:italic; border-left:2px solid var(--line); border-radius:0; padding:2px 8px }
+  .bubble.tool { background:#12302f; color:#9ff2e4; font-family: ui-monospace, Menlo, monospace; font-size:12px } .bubble.edit { background:linear-gradient(90deg,#5b2a6e,#2a5b6e); font-weight:700 } .bubble.sys { color:var(--gold); font-size:12px }
+  .bubble .who { font-weight:700; margin-right:6px; opacity:.9 }
+  .stones { display:flex; flex-direction:column; gap:8px; max-height:520px; overflow:auto }
+  .stone { background:#120d26; border:1px solid var(--line); border-radius:10px; padding:10px }
+  .stone summary { cursor:pointer; display:flex; justify-content:space-between; gap:8px; font-weight:700 } .stone summary small { color:var(--muted); font-weight:400 }
+  .stone .desc { color:var(--muted); font-size:12px; margin:6px 0 }
+  .stone .acts { display:flex; gap:6px; margin-top:6px } .stone .acts button { width:auto; padding:5px 9px; font-size:12px }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; background:#25194a; color:var(--muted); margin-left:6px }
+  .banner { position:fixed; inset:auto 0 0 0; padding:14px; text-align:center; font-size:22px; font-weight:800; background:linear-gradient(90deg,var(--pink),var(--gold),var(--lime)); color:#111; transform:translateY(100%); transition:transform .3s; z-index:9 } .banner.show { transform:none }
+  .confetti { position:fixed; top:-30px; font-size:22px; animation: fall linear forwards; z-index:8; pointer-events:none } @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity:.9 } }
+  .webmcp { font-size:12px; margin-top:8px } .webmcp.ok { color:var(--lime) } .webmcp.bad { color:var(--red) }
+  .games { font-size:12px; max-height:180px; overflow:auto } .games div { padding:4px 0; border-bottom:1px dashed var(--line); display:flex; justify-content:space-between; gap:6px } .games b { color:var(--gold) }
+  .guestview main { grid-template-columns: 1fr } .guestview .hostonly { display:none }
+  .transcript { position:fixed; inset:5% 8%; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; display:none; flex-direction:column; z-index:20 } .transcript.show { display:flex }
+  .transcript pre { flex:1; overflow:auto; font-size:12px; background:#0b0818; padding:10px; border-radius:8px; white-space:pre-wrap }
+  .tbar { display:flex; gap:8px; align-items:center; margin-bottom:8px } .tbar button { width:auto }
+  .metrics { font-size:12px; color:var(--muted) } .metrics b { color:var(--text) }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🎉 Minesweeper Challenge Party</h1>
+    <p class="tag" id="tagline">You host. Luna agents are the guests. They play through WebMCP and leave tools behind for whoever comes next.</p>
+  </div>
+  <div class="score hostonly">
+    <div><b id="s-human">0</b><small>you</small></div>
+    <div><b id="s-guests">0</b><small>guests</small></div>
+    <div><b id="s-stones">0</b><small>tools</small></div>
+    <div><b id="s-edits">0</b><small>rewrites</small></div>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: setup + guests -->
+  <aside class="hostonly">
+    <div class="panel">
+      <h3>New game</h3>
+      <div class="row"><div><label>Rows</label><input id="f-rows" type="number" value="9" min="4" max="30"></div><div><label>Cols</label><input id="f-cols" type="number" value="9" min="4" max="40"></div><div><label>Mines</label><input id="f-mines" type="number" value="10" min="1"></div></div>
+      <label>Tool config seed</label>
+      <select id="f-head"><option value="">Latest (everything ever written)</option><option value="0">Default only (fresh party)</option></select>
+      <label>Board seed (blank = random)</label><input id="f-seed" placeholder="random">
+      <div class="check"><input id="f-retry" type="checkbox"><span>Allow retries after a mine (same layout, clock keeps running)</span></div>
+      <div class="row" style="margin-top:10px"><button class="primary" id="b-new">Start game</button><button id="b-last">Replay last board</button></div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h3>Invite guests</h3>
+      <div class="row"><div><label>How many</label><input id="f-count" type="number" value="1" min="1" max="8"></div><div><label>Model</label><select id="f-model"><option>gpt-5.6-luna</option><option>gpt-5.6-sol</option><option>gpt-5.6-terra</option><option>gpt-5.5</option></select></div><div><label>Effort</label><select id="f-effort"><option>low</option><option>medium</option><option>high</option></select></div></div>
+      <button class="lime" id="b-invite" style="margin-top:10px" disabled>🎈 Invite</button>
+      <p class="hint">Each guest gets one sentence: “Beat me at Minesweeper.” The page’s tools teach the rest.</p>
+      <div class="guests" id="guests" style="margin-top:10px"></div>
+    </div>
+    <div class="panel" style="margin-top:12px">
+      <h3>Past parties</h3>
+      <div class="games" id="games"></div>
+    </div>
+  </aside>
+
+  <!-- CENTER: arena -->
+  <section>
+    <div class="panel">
+      <div class="arena" id="arena">
+        <div class="side hostonly" id="human-side">
+          <div class="side-head"><h2>🧑 You</h2><span class="timer" id="t-human">0.0s</span></div>
+          <div class="board" id="human-board"></div>
+          <div class="status" id="human-status">Start a game.</div>
+          <button id="b-human-retry" style="display:none;width:auto;margin-top:6px">Retry (same layout)</button>
+          <p class="hint hostonly">Left click reveals · right click flags</p>
+        </div>
+        <div class="side" id="guest-side" style="display:none">
+          <div class="side-head"><h2 id="g-title">🎩 Guest</h2><span class="timer" id="t-guest">0.0s</span></div>
+          <div class="board agent" id="guest-board"></div>
+          <div class="status" id="guest-status"></div>
+          <div class="webmcp" id="webmcp">WebMCP: checking…</div>
+        </div>
+      </div>
+      <div class="metrics" id="metrics" style="margin-top:10px"></div>
+    </div>
+    <div class="panel hostonly" style="margin-top:12px">
+      <h3>Guest boards</h3>
+      <div class="arena" id="guest-boards"></div>
+    </div>
+    <div class="panel hostonly" style="margin-top:12px">
+      <h3>Party chatter</h3>
+      <div class="chatter" id="chatter"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: tools -->
+  <aside class="hostonly">
+    <div class="panel">
+      <h3>Tools on the table <span class="pill" id="head-pill"></span></h3>
+      <p class="hint">Every tool is editable, by you or by any guest. Edits go to <code>memo</code> and hot-reload into every open page.</p>
+      <div class="stones" id="stones"></div>
+      <details class="stone" style="margin-top:8px"><summary>＋ Write a new tool</summary>
+        <label>Name</label><input id="n-name" placeholder="reveal_many">
+        <label>Description</label><input id="n-desc" placeholder="Reveal several cells in one call">
+        <label>Input schema (JSON)</label><textarea id="n-schema">{"type":"object","properties":{"cells":{"type":"array","items":{"type":"array","items":{"type":"integer"}}}},"required":["cells"]}</textarea>
+        <label>Code — function body (game, input)</label><textarea id="n-code">let n=0; for (const [r,c] of input.cells) { const x=game.reveal(r,c); if (x.hitMine) break; n++; } return { revealed:n, board: game.text(), ...game.summary() };</textarea>
+        <button class="primary" id="b-newtool" style="margin-top:8px">Save tool</button>
+      </details>
+    </div>
+  </aside>
+</main>
+
+<div class="banner" id="banner"></div>
+<div class="transcript" id="transcript">
+  <div class="tbar"><b id="tr-title">Transcript</b><button id="tr-tools">Tool calls only</button><button id="tr-all">Everything</button><span style="flex:1"></span><button id="tr-close">Close</button></div>
+  <pre id="tr-body"></pre>
+</div>
+
+<script>
+// ============ Minesweeper engine (seeded) ============
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s+0x6d2b79f5)>>>0; let t=s; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
+class Minesweeper {
+  constructor({rows=9,cols=9,mines=10,seed=1}={}){ Object.assign(this,{rows,cols,mines,seed}); this.reset(seed); }
+  reset(seed=this.seed){
+    this.seed=seed; this.status="ready"; this.startedAt=null; this.endedAt=null; this.moves=0;
+    const mk=v=>Array.from({length:this.rows},()=>Array(this.cols).fill(v));
+    this.mine=mk(false); this.open=mk(false); this.flag=mk(false);
+    const r=rng(seed), sr=Math.floor(this.rows/2), sc=Math.floor(this.cols/2); let placed=0, guard=0;
+    while(placed<this.mines && guard++<1e6){ const rr=Math.floor(r()*this.rows), cc=Math.floor(r()*this.cols); if(this.mine[rr][cc]||(Math.abs(rr-sr)<=1&&Math.abs(cc-sc)<=1)) continue; this.mine[rr][cc]=true; placed++; }
+    this.onChange&&this.onChange();
+  }
+  inBounds(r,c){ return Number.isInteger(r)&&Number.isInteger(c)&&r>=0&&c>=0&&r<this.rows&&c<this.cols; }
+  neighbors(r,c){ const o=[]; for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){ if(!dr&&!dc)continue; const a=r+dr,b=c+dc; if(this.inBounds(a,b))o.push([a,b]); } return o; }
+  count(r,c){ return this.neighbors(r,c).filter(([a,b])=>this.mine[a][b]).length; }
+  _start(){ if(this.status==="ready"){ this.status="playing"; this.startedAt=performance.now(); } }
+  _end(s){ this.status=s; this.endedAt=performance.now(); }
+  elapsed(){ return this.startedAt? ((this.endedAt||performance.now())-this.startedAt)/1000 : 0; }
+  reveal(r,c){
+    if(!this.inBounds(r,c)) return {ok:false,error:`(${r},${c}) is off the board`};
+    if(this.status==="won"||this.status==="lost") return {ok:false,error:`game is over (${this.status})`};
+    if(this.open[r][c]) return {ok:false,error:"already revealed"};
+    if(this.flag[r][c]) return {ok:false,error:"cell is flagged; unflag first"};
+    this._start(); this.moves++;
+    if(this.mine[r][c]){ this.open[r][c]=true; this._end("lost"); this.onChange&&this.onChange(); return {ok:true,hitMine:true,status:"lost"}; }
+    const st=[[r,c]]; let opened=0;
+    while(st.length){ const [a,b]=st.pop(); if(this.open[a][b]||this.flag[a][b])continue; this.open[a][b]=true; opened++; if(this.count(a,b)===0) for(const n of this.neighbors(a,b)) if(!this.open[n[0]][n[1]]) st.push(n); }
+    if(this.remaining()===0) this._end("won");
+    this.onChange&&this.onChange(); return {ok:true,hitMine:false,opened,status:this.status};
+  }
+  toggleFlag(r,c){
+    if(!this.inBounds(r,c)) return {ok:false,error:`(${r},${c}) is off the board`};
+    if(this.open[r][c]) return {ok:false,error:"cell already revealed"};
+    if(this.status==="won"||this.status==="lost") return {ok:false,error:`game is over (${this.status})`};
+    this._start(); this.moves++; this.flag[r][c]=!this.flag[r][c]; this.onChange&&this.onChange(); return {ok:true,flagged:this.flag[r][c]};
+  }
+  remaining(){ let n=0; for(let r=0;r<this.rows;r++)for(let c=0;c<this.cols;c++) if(!this.open[r][c]&&!this.mine[r][c])n++; return n; }
+  view(){ const g=[]; for(let r=0;r<this.rows;r++){ const row=[]; for(let c=0;c<this.cols;c++){ if(this.flag[r][c])row.push("F"); else if(!this.open[r][c])row.push("#"); else if(this.mine[r][c])row.push("*"); else row.push(String(this.count(r,c))); } g.push(row);} return g; }
+  text(){ const g=this.view(); const head="    "+Array.from({length:this.cols},(_,i)=>String(i%10)).join(" "); return [head,...g.map((row,i)=>String(i).padStart(2)+"  "+row.join(" "))].join("\n"); }
+  summary(){ return {status:this.status,rows:this.rows,cols:this.cols,mines:this.mines,moves:this.moves,cellsLeft:this.remaining(),seconds:Number(this.elapsed().toFixed(1))}; }
+}
+
+// ============ Rendering ============
+function renderBoard(el, game, {interactive=false, onReveal, onFlag}={}){
+  const v=game.view();
+  el.style.gridTemplateColumns=`repeat(${game.cols}, var(--cs))`;
+  el.style.setProperty("--cs", game.cols>16? "20px" : game.cols>12 ? "24px" : "30px");
+  if(el.childElementCount!==game.rows*game.cols){
+    el.innerHTML="";
+    for(let r=0;r<game.rows;r++)for(let c=0;c<game.cols;c++){ const d=document.createElement("div"); d.className="cell"; d.dataset.r=r; d.dataset.c=c; el.appendChild(d); }
+    if(interactive){
+      el.onclick=e=>{ const t=e.target.closest(".cell"); if(t) onReveal(+t.dataset.r,+t.dataset.c); };
+      el.oncontextmenu=e=>{ e.preventDefault(); const t=e.target.closest(".cell"); if(t) onFlag(+t.dataset.r,+t.dataset.c); };
+    }
+  }
+  let i=0;
+  for(let r=0;r<game.rows;r++)for(let c=0;c<game.cols;c++){
+    const d=el.children[i++], x=v[r][c];
+    d.className="cell"; d.textContent=""; delete d.dataset.n;
+    if(x==="F"){ d.classList.add("flag"); d.textContent="🚩"; }
+    else if(x==="#"){ if(game.status==="lost"&&game.mine[r][c]){ d.classList.add("open"); d.textContent="💣"; } }
+    else if(x==="*"){ d.classList.add("open","mine"); d.textContent="💥"; }
+    else { d.classList.add("open"); if(x!=="0"){ d.textContent=x; d.dataset.n=x; } }
+  }
+}
+function renderView(el, view, rows, cols, status){ // for host viewing a guest's board (no engine)
+  el.style.gridTemplateColumns=`repeat(${cols}, var(--cs))`; el.style.setProperty("--cs", cols>16?"16px":cols>12?"20px":"24px");
+  if(el.childElementCount!==rows*cols){ el.innerHTML=""; for(let i=0;i<rows*cols;i++){ const d=document.createElement("div"); d.className="cell"; el.appendChild(d);} }
+  let i=0; for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){ const d=el.children[i++], x=view?.[r]?.[c]??"#"; d.className="cell"; d.textContent=""; delete d.dataset.n;
+    if(x==="F"){d.classList.add("flag");d.textContent="🚩";} else if(x==="*"){d.classList.add("open","mine");d.textContent="💥";} else if(x!=="#"){d.classList.add("open"); if(x!=="0"){d.textContent=x;d.dataset.n=x;}} }
+}
+const $=id=>document.getElementById(id);
+const api=(p,o={})=>fetch(p,{headers:{"content-type":"application/json"},...o}).then(r=>r.json());
+function confetti(n=60){ for(let i=0;i<n;i++){ const s=document.createElement("div"); s.className="confetti"; s.textContent=["🎉","✨","🎊","💥","🪩","🎈"][i%6]; s.style.left=Math.random()*100+"vw"; s.style.animationDuration=(2+Math.random()*2)+"s"; s.style.animationDelay=(Math.random()*.6)+"s"; document.body.appendChild(s); setTimeout(()=>s.remove(),5000);} }
+function banner(t, ms=4000){ const b=$("banner"); b.textContent=t; b.classList.add("show"); clearTimeout(banner._t); banner._t=setTimeout(()=>b.classList.remove("show"),ms); }
+function beep(freq=660, dur=.12, type="square"){ try{ const ac=beep.ac||(beep.ac=new (window.AudioContext||window.webkitAudioContext)()); const o=ac.createOscillator(), g=ac.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=.05; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+dur);}catch{} }
+function fanfare(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.18,"triangle"),i*120)); }
+function trombone(){ [400,370,340,300].forEach((f,i)=>setTimeout(()=>beep(f,.25,"sawtooth"),i*220)); }
+
+// ============ Mode ============
+const params=new URLSearchParams(location.search);
+const GUEST=params.get("guest"); const GAME_ID=params.get("game");
+let game=null;        // current Game record from server
+let tools=[];         // current tool config
+let toolHead=0;
+let ms=null;          // local Minesweeper engine (human on host, or the guest's own on a guest tab)
+let guestBoards={};   // host: last known guest boards
+let humanTimerIv=null;
+
+// ============ WebSocket ============
+const ws=new WebSocket(`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`);
+ws.onmessage=e=>{
+  const m=JSON.parse(e.data);
+  if(m.type==="tools"){ tools=m.tools; toolHead=m.head; renderTools(); if(GUEST) registerWebMCP(); }
+  if(m.type==="game"&&!GUEST){ if(!game||m.game.id===game.id||m.game.createdAt>(game?.createdAt||0)) { const fresh=!game||m.game.id!==game.id; game=m.game; if(fresh) startHumanBoard(); renderGuests(); renderMetrics(); } loadGames(); }
+  if(m.type==="guest"&&game&&m.gameId===game.id){ game.guests[m.guest.name]=m.guest; if(m.board) guestBoards[m.guest.name]={board:m.board,status:m.guest.status}; renderGuests(); renderGuestBoards(); renderMetrics();
+    if(m.guest.status==="won"&&!GUEST){ banner(`${m.guest.hat} ${m.guest.name} cleared the board!`); confetti(); fanfare(); } if(m.guest.status==="lost"&&!GUEST){ chat({guest:m.guest.name, ev:{kind:"sys", text:"💥 hit a mine"}}); trombone(); } }
+  if(m.type==="human"&&game&&m.gameId===game.id){ game.human=m.human; renderMetrics(); }
+  if(m.type==="chatter"&&game&&m.gameId===game.id) chat(m);
+  if(m.type==="winner"&&game&&m.gameId===game.id){ game.winner=m.winner; renderMetrics(); loadGames(); const w=m.winner==="human"?"🧑 YOU WIN THE PARTY":m.winner==="nobody"?"Nobody cleared it. Awkward.":`${m.winner} WINS THE PARTY`; banner(w,7000); if(m.winner!=="nobody") confetti(120); }
+};
+
+// ============ Tools: render + hot reload ============
+async function loadTools(){ const r=await api(GAME_ID?`/api/tools?game=${GAME_ID}`:"/api/tools"); tools=r.tools; toolHead=r.head; renderTools(); fillHeadOptions(r.entries||[]); }
+function renderTools(){
+  $("s-stones").textContent=tools.length+1; $("head-pill").textContent=`head #${toolHead}`;
+  const box=$("stones"); box.innerHTML="";
+  const all=[...tools, {name:"edit_tool", description:"Create or rewrite any tool. Read-only. The one stone nobody can move.", by:"host", locked:true, code:"(built-in)", inputSchema:{}}];
+  for(const t of all){
+    const d=document.createElement("details"); d.className="stone";
+    d.innerHTML=`<summary><span>${t.locked?"🔒":"🪨"} ${t.name}</span><small>${t.by}${t.memoId?` · #${t.memoId}`:""}</small></summary>
+      <div class="desc">${escapeHtml(t.description)}</div>
+      ${t.locked?"":`<label>Description</label><input class="e-desc" value="${escapeAttr(t.description)}">
+      <label>Input schema</label><textarea class="e-schema">${escapeHtml(JSON.stringify(t.inputSchema))}</textarea>
+      <label>Code (game, input)</label><textarea class="e-code">${escapeHtml(t.code)}</textarea>
+      <div class="acts"><button class="primary e-save">Save</button><button class="e-del">Kick it over</button></div>`}`;
+    if(!t.locked){
+      d.querySelector(".e-save").onclick=async()=>{ let schema; try{ schema=JSON.parse(d.querySelector(".e-schema").value);}catch{ alert("schema is not JSON"); return; }
+        const r=await api("/api/tools",{method:"POST",body:JSON.stringify({name:t.name,description:d.querySelector(".e-desc").value,inputSchema:schema,code:d.querySelector(".e-code").value,by:GUEST||"host",gameId:game?.id})}); if(r.error) alert(r.error); };
+      d.querySelector(".e-del").onclick=async()=>{ if(!confirm(`Remove ${t.name} for everyone? Guests will have to rebuild it.`))return; await api("/api/tools",{method:"POST",body:JSON.stringify({name:t.name,deleted:true,description:t.description,inputSchema:t.inputSchema,code:"",by:GUEST||"host",gameId:game?.id})}); };
+    }
+    box.appendChild(d);
+  }
+  $("s-edits").textContent=(tools.filter(t=>t.memoId).length);
+}
+function fillHeadOptions(entries){ const s=$("f-head"); if(!s) return; const keep=s.value; s.innerHTML=`<option value="">Latest (everything ever written)</option><option value="0">Default only (fresh party)</option>`; for(const e of entries.slice(-40).reverse()){ let nm=""; try{ nm=JSON.parse(e.content).name; }catch{} const o=document.createElement("option"); o.value=e.id; o.textContent=`#${e.id} · ${nm} · ${new Date(e.datetime).toLocaleTimeString()}`; s.appendChild(o);} s.value=keep; }
+const escapeHtml=s=>String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); const escapeAttr=s=>String(s??"").replace(/["&<>]/g,c=>({'"':"&quot;","&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+$("b-newtool")&&($("b-newtool").onclick=async()=>{ let schema; try{ schema=JSON.parse($("n-schema").value);}catch{ alert("schema is not JSON"); return; } const r=await api("/api/tools",{method:"POST",body:JSON.stringify({name:$("n-name").value,description:$("n-desc").value,inputSchema:schema,code:$("n-code").value,by:"host",gameId:game?.id})}); if(r.error) alert(r.error); else banner(`🪨 ${r.name} placed on the table`); });
+
+// ============ HOST: game + human board ============
+async function newGame(useLast=false){
+  const body=useLast?{useLast:true,allowRetry:$("f-retry").checked,toolHead:$("f-head").value}:{rows:+$("f-rows").value,cols:+$("f-cols").value,mines:+$("f-mines").value,seed:$("f-seed").value?+$("f-seed").value:undefined,toolHead:$("f-head").value,allowRetry:$("f-retry").checked};
+  game=await api("/api/games",{method:"POST",body:JSON.stringify(body)}); guestBoards={}; $("chatter").innerHTML=""; startHumanBoard(); renderGuests(); renderGuestBoards(); renderMetrics(); $("b-invite").disabled=false; loadGames(); loadTools();
+  banner(`🎊 Party started · ${game.rows}×${game.cols}, ${game.mines} mines · seed ${game.seed}`);
+}
+function startHumanBoard(){
+  ms=new Minesweeper({rows:game.rows,cols:game.cols,mines:game.mines,seed:game.seed});
+  const el=$("human-board");
+  ms.onChange=()=>{ renderBoard(el,ms); };
+  renderBoard(el,ms,{interactive:true,onReveal:(r,c)=>humanMove(()=>ms.reveal(r,c)),onFlag:(r,c)=>humanMove(()=>ms.toggleFlag(r,c))});
+  $("human-status").textContent="Go. Guests are on the same layout."; $("b-human-retry").style.display="none";
+  clearInterval(humanTimerIv); humanTimerIv=setInterval(()=>{ $("t-human").textContent=(game.human.startedAt? ((game.human.endedAt||Date.now())-game.human.startedAt)/1000 : 0).toFixed(1)+"s"; },100);
+}
+async function humanMove(fn){
+  if(!ms||game.human.status==="won"||game.human.status==="lost") return;
+  const wasReady=ms.status==="ready"; const r=fn(); if(!r.ok) return;
+  const patch={moves:game.human.moves+1};
+  if(wasReady&&!game.human.startedAt){ patch.status="playing"; patch.startedAt=Date.now(); }
+  if(ms.status==="won"){ patch.status="won"; patch.endedAt=Date.now(); $("human-status").textContent="🏁 Cleared!"; confetti(); fanfare(); }
+  if(ms.status==="lost"){ if(game.allowRetry){ patch.retries=game.human.retries+1; $("human-status").textContent="💥 Boom. Retry allowed, clock still running."; $("b-human-retry").style.display="inline-block"; trombone(); } else { patch.status="lost"; patch.endedAt=Date.now(); $("human-status").textContent="💥 Boom. You're out."; trombone(); } }
+  Object.assign(game.human,patch);
+  game.human=await api(`/api/games/${game.id}/human`,{method:"POST",body:JSON.stringify(patch)});
+}
+$("b-human-retry")&&($("b-human-retry").onclick=()=>{ ms.reset(game.seed); ms.status="playing"; ms.startedAt=performance.now(); $("b-human-retry").style.display="none"; $("human-status").textContent="Same layout. You remember where it was, right?"; });
+$("b-new")&&($("b-new").onclick=()=>newGame(false)); $("b-last")&&($("b-last").onclick=()=>newGame(true));
+$("b-invite")&&($("b-invite").onclick=async()=>{ const r=await api(`/api/games/${game.id}/invite`,{method:"POST",body:JSON.stringify({count:+$("f-count").value,model:$("f-model").value,reasoningEffort:$("f-effort").value})}); beep(880,.1); banner(`🎈 ${r.length} guest${r.length>1?"s":""} on the way…`); });
+
+function renderGuests(){
+  if(!game) return; const box=$("guests"); if(!box) return; box.innerHTML="";
+  const gs=Object.values(game.guests); $("s-guests").textContent=gs.length;
+  for(const g of gs){
+    const d=document.createElement("div"); d.className=`guest ${g.status}`;
+    const secs=g.startedAt? (((g.endedAt||Date.now())-g.startedAt)/1000).toFixed(1)+"s" : "";
+    d.innerHTML=`<span class="hat">${g.hat}</span><div style="flex:1"><div class="nm">${g.name}</div><div class="st">${g.status} ${secs} · ${g.toolCalls} calls · ${g.toolsEdited} rewrites${g.retries?` · ${g.retries} retries`:""}${g.threadId?` · <span title="${g.threadId}">thread ✓</span>`:""}</div>${g.error?`<div class="st" style="color:var(--red)">${escapeHtml(g.error)}</div>`:""}</div>
+      <button class="hk" title="Heckle">📣</button><button class="tr" title="Transcript">📜</button>`;
+    d.querySelector(".hk").onclick=async()=>{ const msg=prompt("Heckle "+g.name+":", "You're losing to a human, you know."); if(!msg) return; const r=await api(`/api/games/${game.id}/guest/${encodeURIComponent(g.name)}/heckle`,{method:"POST",body:JSON.stringify({message:msg})}); chat({guest:"you",ev:{kind:"sys",text:r.sent?`📣 → ${g.name}: ${msg}`:`${g.name} already left the party`}}); };
+    d.querySelector(".tr").onclick=()=>openTranscript(g.name);
+    box.appendChild(d);
+  }
+}
+function renderGuestBoards(){ const box=$("guest-boards"); if(!box||!game) return;
+  for(const [name,info] of Object.entries(guestBoards)){ let el=box.querySelector(`[data-g="${name}"]`); if(!el){ el=document.createElement("div"); el.className="side"; el.dataset.g=name; el.innerHTML=`<div class="side-head"><h2>${game.guests[name]?.hat||"🎩"} ${name}</h2><span class="timer"></span></div><div class="board agent"></div>`; box.appendChild(el); }
+    renderView(el.querySelector(".board"), info.board, game.rows, game.cols, info.status); const g=game.guests[name]; el.querySelector(".timer").textContent=g?.startedAt?(((g.endedAt||Date.now())-g.startedAt)/1000).toFixed(1)+"s":""; } }
+setInterval(()=>{ if(!GUEST&&game){ renderGuests(); renderGuestBoards(); } },500);
+function renderMetrics(){ if(!game) return; const gs=Object.values(game.guests); const h=game.human; const t=x=>x.startedAt?(((x.endedAt||Date.now())-x.startedAt)/1000).toFixed(1)+"s":"—";
+  $("metrics").innerHTML=`Game <b>${game.id}</b> · ${game.rows}×${game.cols} · ${game.mines} mines · seed <b>${game.seed}</b> · tools from head <b>#${game.toolHead}</b> · retries <b>${game.allowRetry?"allowed":"no"}</b><br>
+  You: <b>${h.status}</b> ${t(h)} · ${h.moves} moves${h.retries?` · ${h.retries} retries`:""} &nbsp; Guests: ${gs.map(g=>`${g.hat}<b>${g.name}</b> ${g.status} ${t(g)}`).join(" · ")||"none yet"} ${game.winner?`<br>🏆 Winner: <b>${game.winner}</b>`:""}`;
+  $("s-human").textContent=[...(window._allGames||[])].filter(g=>g.winner==="human").length; }
+async function loadGames(){ const gs=await api("/api/games"); window._allGames=gs; const box=$("games"); if(!box) return; box.innerHTML=gs.slice(0,30).map(g=>`<div><span>${new Date(g.createdAt).toLocaleTimeString()} · ${g.rows}×${g.cols}/${g.mines} · seed ${g.seed} · ${Object.keys(g.guests).length} guests</span><b>${g.winner||"…"}</b></div>`).join(""); $("s-human").textContent=gs.filter(g=>g.winner==="human").length; }
+
+// ============ Chatter ============
+const buf={};
+function chat(m){
+  const box=$("chatter"); if(!box) return; const ev=m.ev; const who=m.guest;
+  const add=(cls,html)=>{ const d=document.createElement("div"); d.className="bubble "+cls; d.innerHTML=html; box.appendChild(d); box.scrollTop=box.scrollHeight; while(box.childElementCount>400) box.firstChild.remove(); return d; };
+  if(ev.kind==="text"||ev.kind==="reasoning"){ const k=who+ev.kind; if(!buf[k]||buf[k].parentNode!==box){ buf[k]=add(ev.kind,`<span class="who">${ev.kind==="reasoning"?"💭":"🗣"} ${who}</span><span class="tx"></span>`); } buf[k].querySelector(".tx").textContent+=ev.text; box.scrollTop=box.scrollHeight; return; }
+  delete buf[who+"text"]; delete buf[who+"reasoning"];
+  if(ev.kind==="tool-call"){ const isEdit=/edit_tool/.test(ev.toolName); add(isEdit?"edit":"tool",`<span class="who">${isEdit?"🛠":"⚙️"} ${who}</span>${escapeHtml(ev.toolName)} ${escapeHtml(JSON.stringify(ev.input)).slice(0,300)}`); if(isEdit){ banner(`🛠 ${who} is rewriting the tools…`); beep(1200,.1,"triangle"); } }
+  else if(ev.kind==="tool-result"){ add("tool",`<span class="who">↩ ${who}</span>${escapeHtml(typeof ev.output==="string"?ev.output:JSON.stringify(ev.output)).slice(0,200)}`); }
+  else if(ev.kind==="session"){ add("sys",`🎟 ${who} arrived · thread ${ev.threadId}`); beep(660,.08); }
+  else if(ev.kind==="finish"){ add("sys",`👋 ${who} left · ${ev.reason}`); }
+  else if(ev.kind==="error"){ add("sys",`⚠️ ${who}: ${escapeHtml(ev.message)}`); }
+  else if(ev.kind==="heckle"){ add("sys",`📣 ${escapeHtml(ev.text)}`); }
+  else if(ev.kind==="sys"){ add("sys",`${who?who+" · ":""}${escapeHtml(ev.text)}`); }
+}
+async function openTranscript(name){ const all=await api(`/api/games/${game.id}/transcript/${encodeURIComponent(name)}`); const calls=await api(`/api/games/${game.id}/tool-calls`); const t=$("transcript"); t.classList.add("show"); $("tr-title").textContent=`${name} · ${all.length} events · ${calls.filter(c=>c.guest===name).length} WebMCP calls hit the page`;
+  const fmt=x=>x.map(e=>`${new Date(e.t).toLocaleTimeString()}  ${(e.kind||e.tool||"").padEnd(12)} ${e.text??e.toolName??e.tool??""} ${e.input!==undefined?JSON.stringify(e.input):""} ${e.output!==undefined?"→ "+JSON.stringify(e.output).slice(0,400):""} ${e.result!==undefined?"→ "+JSON.stringify(e.result).slice(0,400):""}${e.threadId?" "+e.threadId:""}${e.message?" "+e.message:""}`).join("\n");
+  $("tr-all").onclick=()=>$("tr-body").textContent=fmt(all); $("tr-tools").onclick=()=>$("tr-body").textContent="— From the agent transcript (Codex) —\n"+fmt(all.filter(e=>e.kind==="tool-call"||e.kind==="tool-result"))+"\n\n— From the page (WebMCP executions) —\n"+fmt(calls.filter(c=>c.guest===name)); $("tr-all").onclick(); }
+$("tr-close").onclick=()=>$("transcript").classList.remove("show");
+
+// ============ GUEST TAB: WebMCP surface ============
+let mcAbort=null;
+function guestReport(tool,input,result){
+  const s=ms.summary(); const body={tool,input,result,status:ms.status==="ready"?undefined:ms.status,moves:ms.moves,board:ms.view()};
+  return api(`/api/games/${GAME_ID}/guest/${encodeURIComponent(GUEST)}/call`,{method:"POST",body:JSON.stringify(body)});
+}
+function makeExecute(t){
+  return async (input)=>{
+    let result;
+    try{ const fn=new Function("game","input",t.code); result=await fn(ms,input??{}); }
+    catch(e){ result={ok:false,error:`tool ${t.name} threw: ${e.message}`}; }
+    let note;
+    if(ms.status==="lost"){ if(game?.allowRetry){ note="You hit a mine. Retries are allowed tonight: the board has been reset to the same layout and the clock is still running."; } else note="You hit a mine. You're out of this race."; }
+    if(ms.status==="won") note="You cleared the board! 🎉";
+    const out=note?{...(typeof result==="object"&&result?result:{result}),note}:result;
+    await guestReport(t.name,input,out);
+    if(ms.status==="lost"&&game?.allowRetry){ const st=ms.startedAt; ms.reset(game.seed); ms.status="playing"; ms.startedAt=st; }
+    return out;
+  };
+}
+// If the browser has no native WebMCP, install a page-level shim with the same registerTool() contract.
+// Registered tools are then bridged to agents over the server (Codex reaches them through MCP).
+const registry=new Map();
+let nativeWebMCP=!!document.modelContext?.registerTool;
+if(!nativeWebMCP){
+  document.modelContext={ registerTool(tool,opts){ registry.set(tool.name,tool); opts?.signal?.addEventListener("abort",()=>{ if(registry.get(tool.name)===tool) registry.delete(tool.name); publishTools(); }); publishTools(); } };
+}
+function publishTools(){ if(ws.readyState!==1) return; ws.send(JSON.stringify({type:"webmcp-tools",gameId:GAME_ID,guest:GUEST,tools:[...registry.values()].map(t=>({name:t.name,title:t.title,description:t.description,inputSchema:t.inputSchema,annotations:t.annotations}))})); }
+ws.addEventListener("open",()=>{ if(GUEST){ ws.send(JSON.stringify({type:"hello",gameId:GAME_ID,guest:GUEST})); publishTools(); } });
+ws.addEventListener("message",async e=>{ const m=JSON.parse(e.data); if(m.type!=="webmcp-call") return; const t=registry.get(m.name); let result; try{ result=t? await t.execute(m.input??{}) : {ok:false,error:`no WebMCP tool named ${m.name}. Call webmcp_list_tools.`}; }catch(err){ result={ok:false,error:String(err?.message||err)}; } ws.send(JSON.stringify({type:"webmcp-result",id:m.id,result})); });
+
+async function registerWebMCP(){
+  const ctx=document.modelContext; const el=$("webmcp");
+  mcAbort?.abort(); mcAbort=new AbortController();
+  const defs=[...tools.map(t=>({name:t.name,title:t.name,description:t.description,inputSchema:t.inputSchema,annotations:{readOnlyHint:t.name==="look_at_board"},execute:makeExecute(t)})),
+    {name:"edit_tool",title:"Edit tool",description:EDIT_DESC,inputSchema:EDIT_SCHEMA,annotations:{readOnlyHint:false},execute:async(input)=>{
+      const r=await api("/api/tools",{method:"POST",body:JSON.stringify({...input,by:GUEST,gameId:GAME_ID})});
+      const out=r.error?{ok:false,error:r.error}:{ok:true,saved:r.name,memoId:r.memoId,note:"Tool is live now for you and every future guest. The tool list changed: call webmcp_list_tools again."};
+      await guestReport("edit_tool",input,out); return out; }}];
+  let n=0;
+  for(const d of defs){ try{ await ctx.registerTool(d,{signal:mcAbort.signal}); n++; }catch(e){ console.warn("registerTool failed",d.name,e); } }
+  el.className="webmcp ok"; el.textContent=`WebMCP (${nativeWebMCP?"native document.modelContext":"page shim, bridged to Codex over MCP"}): ${n} tools registered · ${defs.map(d=>d.name).join(", ")}`;
+}
+let EDIT_DESC="", EDIT_SCHEMA={};
+async function guestMain(){
+  document.body.classList.add("guestview");
+  game=await api(`/api/games/${GAME_ID}`); if(game.error){ $("tagline").textContent="No such party."; return; }
+  const me=game.guests[GUEST]||{hat:"🎩",name:GUEST};
+  $("guest-side").style.display=""; $("g-title").textContent=`${me.hat} ${GUEST}`; $("tagline").textContent=`Welcome, ${GUEST}. You're racing the host on a ${game.rows}×${game.cols} board with ${game.mines} mines. This page has no buttons for you: play only through its WebMCP tools. Every tool is editable with edit_tool.`;
+  ms=new Minesweeper({rows:game.rows,cols:game.cols,mines:game.mines,seed:game.seed});
+  ms.onChange=()=>{ renderBoard($("guest-board"),ms); $("guest-status").textContent=ms.status==="won"?"🏁 Cleared!":ms.status==="lost"?"💥 Boom.":ms.status==="playing"?"Playing through WebMCP…":"Waiting for the first tool call."; };
+  renderBoard($("guest-board"),ms); ms.onChange();
+  setInterval(()=>{ $("t-guest").textContent=ms.elapsed().toFixed(1)+"s"; },100);
+  const e=await api("/api/edit-tool"); EDIT_DESC=e.description; EDIT_SCHEMA=e.inputSchema;
+  await loadTools(); await registerWebMCP();
+  renderMetrics();
+}
+
+// ============ boot ============
+if(GUEST&&GAME_ID) guestMain(); else { loadTools(); loadGames(); api("/api/games").then(gs=>{ if(gs[0]&&!gs[0].winner&&Date.now()-gs[0].createdAt<3600e3){ game=gs[0]; startHumanBoard(); renderGuests(); renderMetrics(); $("b-invite").disabled=false; } }); }
+</script>
+</body>
+</html>

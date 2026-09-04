@@ -1,0 +1,17 @@
+{
+  "name": "minesweeper-challenge-party",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.4.0"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "ai": "^7.0.92",
+    "ai-sdk-provider-codex-app-server": "^1.1.7",
+    "zod": "^4.5.4"
+  }
+}

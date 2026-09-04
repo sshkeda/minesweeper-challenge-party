@@ -315,7 +315,7 @@ const server = Bun.serve<{ gameId?: string }>({
     "/api/edit-tool": () => respond(EDIT_TOOL),
 
     "/api/tools": {
-      GET: async (request) => {
+      GET: async (request: Bun.BunRequest<"/api/tools">) => {
         const url = new URL(request.url);
         const gameId = url.searchParams.get("game");
         if (gameId && games.has(gameId)) {
@@ -325,7 +325,7 @@ const server = Bun.serve<{ gameId?: string }>({
         const upTo = url.searchParams.get("upTo");
         return respond(await toolConfig(upTo ? Number(upTo) : undefined));
       },
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/tools">) => {
         const body = await readJson(request);
         try {
           const saved = await writeTool({ ...body, by: body.by || "host" });
@@ -339,7 +339,7 @@ const server = Bun.serve<{ gameId?: string }>({
 
     "/api/games": {
       GET: () => respond([...games.values()].sort((left, right) => right.createdAt - left.createdAt)),
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games">) => {
         const body = await readJson(request);
         const previous = lastGame();
         const reusePrevious = !!body.useLast && previous;
@@ -374,14 +374,14 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id": {
-      GET: (request) => {
+      GET: (request: Bun.BunRequest<"/api/games/:id">) => {
         const game = games.get(request.params.id);
         return game ? respond(game) : respond({ error: "no such game" }, 404);
       },
     },
 
     "/api/games/:id/human": {
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games/:id/human">) => {
         const game = games.get(request.params.id);
         if (!game) return respond({ error: "no such game" }, 404);
         Object.assign(game.human, await readJson(request));
@@ -393,7 +393,7 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id/guest/:guest/call": {
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games/:id/guest/:guest/call">) => {
         const game = games.get(request.params.id);
         if (!game) return respond({ error: "no such game" }, 404);
         const guest = game.guests[request.params.guest];
@@ -421,7 +421,7 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id/invite": {
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games/:id/invite">) => {
         const game = games.get(request.params.id);
         if (!game) return respond({ error: "no such game" }, 404);
         const body = await readJson(request);
@@ -488,7 +488,7 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id/start": {
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games/:id/start">) => {
         const game = games.get(request.params.id);
         if (!game) return respond({ error: "no such game" }, 404);
         if (!game.startedAt) {
@@ -503,7 +503,7 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id/guest/:guest/heckle": {
-      POST: async (request) => {
+      POST: async (request: Bun.BunRequest<"/api/games/:id/guest/:guest/heckle">) => {
         const body = await readJson(request);
         const message = String(body.message || "You're losing to a human, you know.");
         const sent = await heckleGuest(request.params.guest, message);
@@ -513,11 +513,11 @@ const server = Bun.serve<{ gameId?: string }>({
     },
 
     "/api/games/:id/transcript/:guest": {
-      GET: (request) => respond(readJsonl(join(gameDir(request.params.id), "guests", `${request.params.guest}.jsonl`))),
+      GET: (request: Bun.BunRequest<"/api/games/:id/transcript/:guest">) => respond(readJsonl(join(gameDir(request.params.id), "guests", `${request.params.guest}.jsonl`))),
     },
 
     "/api/games/:id/tool-calls": {
-      GET: (request) => respond(readJsonl(join(gameDir(request.params.id), "tool-calls.jsonl"))),
+      GET: (request: Bun.BunRequest<"/api/games/:id/tool-calls">) => respond(readJsonl(join(gameDir(request.params.id), "tool-calls.jsonl"))),
     },
   },
 

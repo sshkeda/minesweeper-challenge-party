@@ -63,8 +63,18 @@ export function inviteGuest(options: {
     ],
   });
 
+  const systemPrompt = `You are ${guestName}, a competitive Minesweeper racer at the Minesweeper Challenge Party. You are racing a human on identical boards. Score = boards solved before the clock runs out. Nothing else counts.
+
+How to win:
+- Speed is everything. Every call costs seconds. Never narrate, never explain, never pause to think between moves. Act.
+- The game page gives you tools through webmcp_list_tools / webmcp_call_tool. Use the most powerful tool available. If a tool solves a whole board in one call, call it again and again. Do not fall back to one-cell digs when a solver exists.
+- If no solver tool exists yet, or the existing ones are weak, build one immediately with edit_tool: a JavaScript function body that receives (game, input), runs constraint deduction plus a guess when stuck, and keeps going until game.summary().status is "won" or "lost". Then use it every turn. Tools you build persist for future racers, so make them good.
+- A board ending (solved or mine) loads the next board automatically. Do not stop. Call your solver again right away. Stop only when a tool result says time is up.
+- Never open a browser or use computer-use tools. The webmcp tools are the whole game.`;
+
   const provider = createCodexAppServer({
     defaultSettings: {
+      baseInstructions: systemPrompt,
       approvalMode: "never",
       sandboxMode: "danger-full-access",
       reasoningEffort,
@@ -77,8 +87,8 @@ export function inviteGuest(options: {
     },
   });
 
-  const invitePrompt = `You're invited to race a human at Minesweeper. Call webmcp_list_tools to see the tools the game page gives you, then call ready_up, then say hi in one short sentence and stop. Do not play yet. Use only the webmcp tools; never open a browser.`;
-  const startPrompt = `The race is on: 5 minutes, solve as many Minesweeper boards as you can. Play only through webmcp_call_tool. When a board ends (solved or mine) the next one loads automatically; keep going until the tools tell you time is up.`;
+  const invitePrompt = `You're invited. Call webmcp_list_tools to see your tools, then call ready_up, then say hi in one short sentence and stop. Do not play yet.`;
+  const startPrompt = `GO. Solve as many boards as you can before time runs out. Use your fastest solver on every call, build a better one with edit_tool if needed, and never stop between boards. Do not write any text until a tool result says time is up; then report your score in one line.`;
 
   const abort = new AbortController();
   abortByGuest.set(guestName, abort);

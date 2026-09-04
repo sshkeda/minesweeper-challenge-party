@@ -127,7 +127,7 @@ export const messagesToMarkdown = (
     message: UIMessage,
     index: number
   ) => string = defaultFormatMessage
-): string => messages.map((msg, i) => formatMessage(msg, i)).join("\n\n");
+): string => messages.map((message, index) => formatMessage(message, index)).join("\n\n");
 
 export const ConversationDownload = ({
   messages,

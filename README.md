@@ -28,8 +28,10 @@ Requirements: [Bun](https://bun.sh) 1.4+, [Codex CLI](https://github.com/openai/
 
 ```sh
 bun install
-bun --hot server.ts
-# open http://localhost:4321
+cd web && bun install && cd ..
+bun --hot server.ts          # API + WebSocket + agent runner on :4321
+cd web && bun run dev        # UI on :5173 (proxies /api and /ws)
+# open http://localhost:5173
 ```
 
 1. **Start game**: board size, mine count, retry rule, and which tool config to seed from (default only, latest, or any point in the memo log). "Replay last board" reuses the previous seed so guests face the same layout.
@@ -40,7 +42,7 @@ bun --hot server.ts
 ## Files
 
 - `server.ts`: Bun server, WebSocket fan-out, games as JSON, tools via `memo`, WebMCP bridge.
-- `index.html`: the party. Minesweeper engine, host view, guest view, WebMCP registration.
+- `web/`: Vite + React + Tailwind + shadcn + AI Elements. Host view, guest view, WebMCP registration (`web/src/lib/webmcp.ts`).
 - `agent.ts`: invites guests through the Vercel AI SDK (`ai` 7) and `ai-sdk-provider-codex-app-server`, running your local Codex.
 
 Built in one night for the [WebMCP Challenge](https://webmcp.devpost.com/). MIT.

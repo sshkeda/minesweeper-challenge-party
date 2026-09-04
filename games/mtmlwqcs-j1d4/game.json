@@ -1,0 +1,32 @@
+{
+  "id": "mtmlwqcs-j1d4",
+  "createdAt": 1788505352812,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 314100942,
+  "toolHead": 5,
+  "startHead": 5,
+  "allowRetry": true,
+  "spectate": false,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "won",
+      "moves": 7,
+      "toolCalls": 13,
+      "toolsEdited": 0,
+      "retries": 1,
+      "threadId": "01a06b39-f00e-7510-9c60-75f02150612f",
+      "startedAt": 1788505381010,
+      "endedAt": 1788505430689
+    }
+  },
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0
+  },
+  "winner": "Luna-1"
+}

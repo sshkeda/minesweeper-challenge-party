@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { inviteGuest, heckleGuest, type GuestEvent } from "./agent";
 
 const PORT = Number(process.env.PORT ?? 4321);
+const APP_URL = process.env.APP_URL ?? "http://localhost:5173";
 const ROOT = import.meta.dir;
 const GAMES_DIR = join(ROOT, "games");
 const TOOL_LOG = "mcp-party-tools";
@@ -126,8 +127,11 @@ export async function toolConfig(seedHead?: number, liveEditsAfter?: number) {
 }
 
 export async function writeTool(candidate: ToolDefinition): Promise<ToolDefinition> {
-  const name = String(candidate.name).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 48);
+  const name = String(candidate.name ?? "").toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 48);
+  if (!name || name === "undefined" || name === "null") throw new Error("name is required (snake_case)");
   if (name === EDIT_TOOL.name) throw new Error("edit_tool cannot be rewritten");
+  if (!candidate.deleted && !String(candidate.description ?? "").trim()) throw new Error("description is required");
+  if (!candidate.deleted && !String(candidate.code ?? "").trim()) throw new Error("code is required");
   const definition: ToolDefinition = {
     name,
     description: String(candidate.description ?? ""),
@@ -439,7 +443,7 @@ const server = Bun.serve<{ gameId?: string }>({
           };
           game.guests[guestName] = guest;
           invited.push(guest);
-          const url = `http://localhost:${PORT}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
+          const url = `${APP_URL}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
           Bun.spawn(["open", "-a", "Google Chrome", url]).exited.catch(() => {});
           waitForGuestTab(game.id, guestName).then((connected) => {
             if (!connected) appendTranscript(game.id, guestName, { kind: "error", message: "guest tab never connected" });

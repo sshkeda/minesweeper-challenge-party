@@ -334,7 +334,14 @@ byId("transcript-load").onclick=async()=>{ const [gameId,guestName]=byId("transc
 
 const registry=new Map(); let registrationAbort=null;
 const nativeWebMCP=!!document.modelContext?.registerTool;
-if(!nativeWebMCP){ document.modelContext={ registerTool(tool,options){ registry.set(tool.name,tool); options?.signal?.addEventListener("abort",()=>{ if(registry.get(tool.name)===tool) registry.delete(tool.name); publishTools(); }); publishTools(); } }; }
+const nativeRegisterTool=nativeWebMCP?document.modelContext.registerTool.bind(document.modelContext):null;
+async function registerTool(tool,options){
+  registry.set(tool.name,tool);
+  options?.signal?.addEventListener("abort",()=>{ if(registry.get(tool.name)===tool) registry.delete(tool.name); publishTools(); });
+  publishTools();
+  if(nativeRegisterTool) await nativeRegisterTool(tool,options);
+}
+if(!nativeWebMCP) document.modelContext={ registerTool };
 function publishTools(){ if(socket.readyState!==1||!GUEST_NAME) return; socket.send(JSON.stringify({type:"webmcp-tools",gameId:GAME_ID,guest:GUEST_NAME,tools:[...registry.values()].map((tool)=>({name:tool.name,title:tool.title,description:tool.description,inputSchema:tool.inputSchema,annotations:tool.annotations}))})); }
 socket.addEventListener("message",async(event)=>{ const message=JSON.parse(event.data); if(message.type!=="webmcp-call") return; const tool=registry.get(message.name); let result; try{ result=tool? await tool.execute(message.input??{}) : {ok:false,error:`no WebMCP tool named ${message.name}. Call webmcp_list_tools.`}; }catch(error){ result={ok:false,error:String(error?.message||error)}; } socket.send(JSON.stringify({type:"webmcp-result",id:message.id,result})); });
 
@@ -361,7 +368,7 @@ async function registerWebMCP(){
       const output=saved.error?{ok:false,error:saved.error}:{ok:true,saved:saved.name,memoId:saved.memoId,note:"Tool is live now for you and every future guest. The tool list changed: call webmcp_list_tools again."};
       await reportCall("edit_tool",input,output); return output; }}];
   let registered=0;
-  for(const definition of definitions){ try{ await document.modelContext.registerTool(definition,{signal:registrationAbort.signal}); registered++; }catch(error){ console.warn("registerTool failed",definition.name,error); } }
+  for(const definition of definitions){ try{ await registerTool(definition,{signal:registrationAbort.signal}); registered++; }catch(error){ console.warn("registerTool failed",definition.name,error); } }
   byId("webmcp").textContent=`${registered} tools ready for Luna`;
 }
 

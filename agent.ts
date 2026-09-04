@@ -18,6 +18,7 @@ export type GuestEvent =
 const sessionsByGuest = new Map<string, Session>();
 const abortByGuest = new Map<string, AbortController>();
 const startersByGuest = new Map<string, () => Promise<void>>();
+const endersByGuest = new Map<string, () => Promise<void>>();
 
 export function inviteGuest(options: {
   gameId: string;
@@ -83,9 +84,12 @@ export function inviteGuest(options: {
   abortByGuest.set(guestName, abort);
   const languageModel = provider(model);
 
+  let turnActive = false;
   const runTurn = async (prompt: string) => {
-    const result = streamText({ model: languageModel, prompt, abortSignal: abort.signal });
-    for await (const part of result.fullStream) {
+    turnActive = true;
+    try {
+      const result = streamText({ model: languageModel, prompt, abortSignal: abort.signal });
+      for await (const part of result.fullStream) {
         switch (part.type) {
           case "text-delta":
             onEvent({ kind: "text", text: part.text });
@@ -114,6 +118,9 @@ export function inviteGuest(options: {
             break;
         }
       }
+    } finally {
+      turnActive = false;
+    }
   };
 
   let started = false;
@@ -131,6 +138,17 @@ export function inviteGuest(options: {
     }
   };
   startersByGuest.set(guestName, startRace);
+  endersByGuest.set(guestName, async () => {
+    startersByGuest.delete(guestName);
+    if (turnActive) abort.abort();
+    const session = sessionsByGuest.get(guestName);
+    if (session?.isActive()) {
+      try {
+        await session.interrupt();
+      } catch {}
+    }
+    sessionsByGuest.delete(guestName);
+  });
 
   (async () => {
     try {
@@ -154,14 +172,9 @@ export function startGuest(guestName: string) {
 }
 
 export async function endGuest(guestName: string) {
-  const session = sessionsByGuest.get(guestName);
-  abortByGuest.get(guestName)?.abort();
-  startersByGuest.delete(guestName);
-  if (session?.isActive()) {
-    try {
-      await session.interrupt();
-    } catch {}
-  }
+  const ender = endersByGuest.get(guestName);
+  endersByGuest.delete(guestName);
+  await ender?.();
 }
 
 export async function heckleGuest(guestName: string, message: string): Promise<boolean> {

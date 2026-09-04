@@ -14,14 +14,15 @@
     "Luna-1": {
       "name": "Luna-1",
       "hat": "🎩",
-      "status": "ready",
+      "status": "left",
       "moves": 0,
       "toolCalls": 0,
       "toolsEdited": 0,
       "retries": 0,
       "solved": 0,
       "boardIndex": 0,
-      "threadId": "01a06b4b-30ed-71b1-bb29-6f1b33122649"
+      "threadId": "01a06b4b-30ed-71b1-bb29-6f1b33122649",
+      "endedAt": 1788506543862
     }
   },
   "human": {

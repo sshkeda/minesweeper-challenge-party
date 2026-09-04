@@ -9,6 +9,9 @@ const GAMES_DIR = join(ROOT, "games");
 const TOOL_LOG = "mcp-party-tools";
 mkdirSync(GAMES_DIR, { recursive: true });
 
+process.on("uncaughtException", (error) => console.error("[uncaught]", error?.message ?? error));
+process.on("unhandledRejection", (reason) => console.error("[unhandled]", (reason as Error)?.message ?? reason));
+
 export type ToolDefinition = {
   name: string;
   description: string;

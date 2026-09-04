@@ -1,0 +1,19 @@
+{
+  "id": "mtmkwj01-roe9",
+  "createdAt": 1788503663665,
+  "rows": 9,
+  "cols": 9,
+  "mines": 10,
+  "seed": 1986517734,
+  "toolHead": 0,
+  "startHead": 3,
+  "allowRetry": false,
+  "spectate": false,
+  "guests": {},
+  "human": {
+    "status": "playing",
+    "moves": 2,
+    "retries": 0,
+    "startedAt": 1788503666054
+  }
+}

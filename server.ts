@@ -1,4 +1,3 @@
-import index from "./index.html";
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { inviteGuest, heckleGuest, type GuestEvent } from "./agent";
@@ -307,9 +306,8 @@ function readJsonl(file: string) {
 
 const server = Bun.serve<{ gameId?: string }>({
   port: PORT,
-  development: { hmr: true, console: true },
   routes: {
-    "/": index,
+    "/": () => Response.redirect(APP_URL, 302),
     "/api/health": () => respond({ ok: true, party: "Minesweeper Challenge Party" }),
     "/api/edit-tool": () => respond(EDIT_TOOL),
 

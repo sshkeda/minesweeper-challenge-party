@@ -72,7 +72,7 @@
     <div class="side" id="agent-side">
       <div class="side-head"><h2 id="agent-title">🎩 Luna</h2><span class="timer" id="agent-timer">0.0s</span></div>
       <div class="board agent" id="agent-board"></div>
-      <div class="lives" id="agent-lives">Luna plays with tools.</div>
+      <div class="lives" id="agent-lives"></div>
       <div class="webmcp" id="webmcp" style="display:none"></div>
       <div class="log" id="agent-log"></div>
     </div>
@@ -234,7 +234,7 @@ async function startGame(){
   byId("human-log").innerHTML=""; byId("agent-log").innerHTML="";
   for(const side of ["human-side","agent-side"]) byId(side).classList.remove("won","lost");
   byId("human-side").style.display=game.spectate?"none":"";
-  byId("agent-lives").textContent="Luna plays with tools.";
+  byId("agent-lives").textContent="";
   startHumanBoard();
   renderView(byId("agent-board"), null, game.rows, game.cols);
   logLine(byId("agent-log"),"Calling Luna…","muted");

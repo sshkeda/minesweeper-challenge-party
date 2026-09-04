@@ -1,6 +1,6 @@
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { inviteGuest, heckleGuest, endGuest, type GuestEvent } from "./agent";
+import { inviteGuest, heckleGuest, endGuest, startGuest, type GuestEvent } from "./agent";
 
 const PORT = Number(process.env.PORT ?? 4321);
 const APP_URL = process.env.APP_URL ?? "http://localhost:5173";
@@ -150,7 +150,7 @@ export async function writeTool(candidate: ToolDefinition): Promise<ToolDefiniti
 export type Guest = {
   name: string;
   hat: string;
-  status: "arriving" | "playing" | "won" | "lost" | "left" | "error";
+  status: "arriving" | "ready" | "playing" | "won" | "lost" | "left" | "error";
   threadId?: string;
   startedAt?: number;
   endedAt?: number;
@@ -180,6 +180,7 @@ export type Game = {
   startHead: number;
   allowRetry: boolean;
   spectate: boolean;
+  startedAt?: number;
   guests: Record<string, Guest>;
   human: HumanState;
   winner?: "human" | string | "nobody";
@@ -201,7 +202,7 @@ function loadGames() {
     try {
       const game = JSON.parse(readFileSync(file, "utf8")) as Game;
       for (const guest of Object.values(game.guests)) {
-        if (guest.status === "arriving" || guest.status === "playing") guest.status = "left";
+        if (guest.status === "arriving" || guest.status === "ready" || guest.status === "playing") guest.status = "left";
       }
       games.set(gameId, game);
     } catch {}
@@ -233,7 +234,7 @@ function settleWinner(game: Game) {
 
   if (finishers.length) {
     const someoneStillPlaying =
-      guests.some((guest) => guest.status === "playing" || guest.status === "arriving") || game.human.status === "playing";
+      guests.some((guest) => guest.status === "playing" || guest.status === "arriving" || guest.status === "ready") || game.human.status === "playing";
     if ((!humanDone || !guestsDone) && someoneStillPlaying) return;
     finishers.sort((left, right) => left.at - right.at);
     game.winner = finishers[0].who;
@@ -399,7 +400,7 @@ const server = Bun.serve<{ gameId?: string }>({
           guest.toolCalls++;
           if (body.tool === "edit_tool") guest.toolsEdited++;
           if (body.status) {
-            if (guest.status === "arriving") {
+            if (guest.status === "arriving" || guest.status === "ready") {
               guest.status = "playing";
               guest.startedAt = Date.now();
             }
@@ -458,8 +459,13 @@ const server = Bun.serve<{ gameId?: string }>({
                 guest.threadId = event.threadId;
                 saveGame(game);
               }
+              if (event.kind === "joined") {
+                guest.status = "ready";
+                saveGame(game);
+                broadcast({ type: "guest", gameId: game.id, guest });
+              }
               if (event.kind === "finish") {
-                if (guest.status === "arriving" || guest.status === "playing") guest.status = "left";
+                if (guest.status === "arriving" || guest.status === "ready" || guest.status === "playing") guest.status = "left";
                 guest.endedAt ??= Date.now();
                 saveGame(game);
                 broadcast({ type: "guest", gameId: game.id, guest });
@@ -479,6 +485,20 @@ const server = Bun.serve<{ gameId?: string }>({
         saveGame(game);
         broadcast({ type: "game", game });
         return respond(invited, 201);
+      },
+    },
+
+    "/api/games/:id/start": {
+      POST: async (request) => {
+        const game = games.get(request.params.id);
+        if (!game) return respond({ error: "no such game" }, 404);
+        if (!game.startedAt) {
+          game.startedAt = Date.now();
+          saveGame(game);
+          for (const guestName of Object.keys(game.guests)) startGuest(guestName);
+          broadcast({ type: "started", gameId: game.id, startedAt: game.startedAt });
+        }
+        return respond(game);
       },
     },
 
@@ -523,7 +543,7 @@ const server = Bun.serve<{ gameId?: string }>({
         endGuest(guestName);
         const game = games.get(gameId);
         const guest = game?.guests[guestName];
-        if (game && guest && (guest.status === "arriving" || guest.status === "playing")) {
+        if (game && guest && (guest.status === "arriving" || guest.status === "ready" || guest.status === "playing")) {
           guest.status = "left";
           guest.endedAt = Date.now();
           saveGame(game);

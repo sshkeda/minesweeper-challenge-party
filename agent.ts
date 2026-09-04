@@ -5,6 +5,7 @@ import { webmcpListTools, webmcpCall, waitForGuestTab } from "./server";
 
 export type GuestEvent =
   | { kind: "session"; threadId: string }
+  | { kind: "joined" }
   | { kind: "text"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; toolName: string; input: unknown; id?: string }
@@ -16,6 +17,7 @@ export type GuestEvent =
 
 const sessionsByGuest = new Map<string, Session>();
 const abortByGuest = new Map<string, AbortController>();
+const startersByGuest = new Map<string, () => Promise<void>>();
 
 export function inviteGuest(options: {
   gameId: string;
@@ -63,20 +65,16 @@ export function inviteGuest(options: {
     },
   });
 
-  const prompt = `Beat me at Minesweeper. Your board is already open at ${url}; play only through the page's WebMCP tools (webmcp_list_tools, then webmcp_call_tool) and never click the page. Your name tonight is ${guestName}.`;
+  const invitePrompt = `You're invited to race a human at Minesweeper on ${url}. Say hi in one short sentence and then stop. Do not touch any tools yet; the host will tell you when the race starts. Your name tonight is ${guestName}.`;
+  const startPrompt = `The race is on. Beat me at Minesweeper. Play only through the page's WebMCP tools (webmcp_list_tools, then webmcp_call_tool) and never click the page.`;
 
   const abort = new AbortController();
   abortByGuest.set(guestName, abort);
+  const languageModel = provider(model);
 
-  (async () => {
-    try {
-      const connected = await waitForGuestTab(gameId, guestName);
-      if (!connected || abort.signal.aborted) {
-        onEvent({ kind: "error", message: "the party page never connected" });
-        return;
-      }
-      const result = streamText({ model: provider(model), prompt, abortSignal: abort.signal });
-      for await (const part of result.fullStream) {
+  const runTurn = async (prompt: string) => {
+    const result = streamText({ model: languageModel, prompt, abortSignal: abort.signal });
+    for await (const part of result.fullStream) {
         switch (part.type) {
           case "text-delta":
             onEvent({ kind: "text", text: part.text });
@@ -94,7 +92,7 @@ export function inviteGuest(options: {
             onEvent({ kind: "raw", data: (part as { rawValue?: unknown }).rawValue });
             break;
           case "finish":
-            onEvent({ kind: "finish", reason: part.finishReason, usage: part.totalUsage });
+            if (started) onEvent({ kind: "finish", reason: part.finishReason, usage: part.totalUsage });
             break;
           case "error": {
             const streamError = (part as { error?: unknown }).error;
@@ -105,6 +103,14 @@ export function inviteGuest(options: {
             break;
         }
       }
+  };
+
+  let started = false;
+  const startRace = async () => {
+    if (started || abort.signal.aborted) return;
+    started = true;
+    try {
+      await runTurn(startPrompt);
     } catch (error) {
       if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
     } finally {
@@ -112,12 +118,32 @@ export function inviteGuest(options: {
       sessionsByGuest.delete(guestName);
       abortByGuest.delete(guestName);
     }
+  };
+  startersByGuest.set(guestName, startRace);
+
+  (async () => {
+    try {
+      const connected = await waitForGuestTab(gameId, guestName);
+      if (!connected || abort.signal.aborted) {
+        onEvent({ kind: "error", message: "the party page never connected" });
+        return;
+      }
+      await runTurn(invitePrompt);
+      onEvent({ kind: "joined" });
+    } catch (error) {
+      if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
+    }
   })();
+}
+
+export function startGuest(guestName: string) {
+  return startersByGuest.get(guestName)?.();
 }
 
 export async function endGuest(guestName: string) {
   const session = sessionsByGuest.get(guestName);
   abortByGuest.get(guestName)?.abort();
+  startersByGuest.delete(guestName);
   if (session?.isActive()) {
     try {
       await session.interrupt();

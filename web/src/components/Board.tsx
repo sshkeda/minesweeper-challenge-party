@@ -20,6 +20,7 @@ export function Board({
   onReveal,
   onFlag,
   dimmed,
+  highlight,
 }: {
   view: CellView[][] | null;
   rows: number;
@@ -28,6 +29,7 @@ export function Board({
   onReveal?: (row: number, col: number) => void;
   onFlag?: (row: number, col: number) => void;
   dimmed?: boolean;
+  highlight?: Set<string> | null;
 }) {
   const size = cols > 16 ? 20 : cols > 12 ? 26 : 32;
   const interactive = !!onReveal;
@@ -59,6 +61,7 @@ export function Board({
               showMine && "bg-zinc-800",
               numberColors[value],
               !interactive && "cursor-default",
+              highlight?.has(`${row},${col}`) && "ring-2 ring-amber-400 ring-offset-1 ring-offset-black",
             )}
             onClick={() => onReveal?.(row, col)}
             onContextMenu={(event) => {

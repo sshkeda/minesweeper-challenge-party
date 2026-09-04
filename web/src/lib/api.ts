@@ -1,7 +1,7 @@
 export type Guest = {
   name: string;
   hat: string;
-  status: "arriving" | "playing" | "won" | "lost" | "left" | "error";
+  status: "arriving" | "ready" | "playing" | "won" | "lost" | "left" | "error";
   threadId?: string;
   startedAt?: number;
   endedAt?: number;
@@ -23,6 +23,7 @@ export type Game = {
   startHead: number;
   allowRetry: boolean;
   spectate: boolean;
+  startedAt?: number;
   guests: Record<string, Guest>;
   human: { status: "ready" | "playing" | "won" | "lost" | "spectating"; startedAt?: number; endedAt?: number; moves: number; retries: number };
   winner?: string;
@@ -39,6 +40,7 @@ export type ToolDefinition = {
 
 export type GuestEvent =
   | { kind: "session"; threadId: string }
+  | { kind: "joined" }
   | { kind: "text"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool-call"; toolName: string; input: unknown; id?: string }

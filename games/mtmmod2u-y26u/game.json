@@ -1,0 +1,38 @@
+{
+  "id": "mtmmod2u-y26u",
+  "createdAt": 1788506641974,
+  "rows": 9,
+  "cols": 9,
+  "mines": 10,
+  "seed": 924175648,
+  "toolHead": 14,
+  "startHead": 14,
+  "allowRetry": true,
+  "spectate": false,
+  "durationMs": 300000,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "left",
+      "moves": 5408,
+      "toolCalls": 515,
+      "toolsEdited": 2,
+      "retries": 110,
+      "solved": 142,
+      "boardIndex": 252,
+      "threadId": "01a06b4d-9b40-75c3-a310-967f07fda489",
+      "startedAt": 1788506677618,
+      "endedAt": 1788506828502
+    }
+  },
+  "human": {
+    "status": "playing",
+    "moves": 48,
+    "retries": 0,
+    "solved": 0,
+    "boardIndex": 4,
+    "startedAt": 1788506660791
+  },
+  "startedAt": 1788506659351
+}

@@ -362,7 +362,7 @@ const server = Bun.serve<{ gameId?: string }>({
           startHead: (await toolConfig()).head,
           allowRetry: true,
           spectate,
-          durationMs: Math.max(30_000, Math.min(30 * 60_000, Number(body.durationMs ?? 300_000))),
+          durationMs: Math.max(30_000, Math.min(30 * 60_000, Number(body.durationMs ?? 120_000))),
           guests: {},
           human: { status: spectate ? "spectating" : "ready", moves: 0, retries: 0, solved: 0, boardIndex: 0 },
         };

@@ -25,7 +25,7 @@ type Settings = {
   seed: string;
 };
 
-const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, minutes: 5, model: "gpt-5.6-luna", effort: "low", spectate: false, sameLayout: false, toolHead: "", seed: "" };
+const defaultSettings: Settings = { rows: 9, cols: 9, mines: 10, minutes: 2, model: "gpt-5.6-luna", effort: "low", spectate: false, sameLayout: false, toolHead: "", seed: "" };
 
 function modelLabel(model: string) {
   return model

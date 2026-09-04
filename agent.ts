@@ -124,10 +124,13 @@ export function inviteGuest(options: {
   };
 
   let started = false;
+  let inviteTurn: Promise<void> = Promise.resolve();
   const startRace = async () => {
     if (started || abort.signal.aborted) return;
     started = true;
     try {
+      await inviteTurn.catch(() => {});
+      if (abort.signal.aborted) return;
       await runTurn(startPrompt);
     } catch (error) {
       if (!abort.signal.aborted) onEvent({ kind: "error", message: String((error as Error)?.message ?? error) });
@@ -157,7 +160,7 @@ export function inviteGuest(options: {
         onEvent({ kind: "error", message: "the party page never connected" });
         return;
       }
-      const inviteTurn = runTurn(invitePrompt);
+      inviteTurn = runTurn(invitePrompt);
       await Promise.race([ready, inviteTurn]);
       onEvent({ kind: "joined" });
       await inviteTurn;

@@ -397,7 +397,7 @@ const server = Bun.serve<{ gameId?: string }>({
           guest.toolCalls++;
           if (body.tool === "edit_tool") guest.toolsEdited++;
           if (body.status) {
-            if (guest.status === "arriving" && body.status === "playing") {
+            if (guest.status === "arriving") {
               guest.status = "playing";
               guest.startedAt = Date.now();
             }

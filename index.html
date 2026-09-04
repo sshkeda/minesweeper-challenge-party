@@ -66,7 +66,7 @@
     <div class="side" id="human-side">
       <div class="side-head"><h2>🧑 You</h2><span class="timer" id="human-timer">0.0s</span></div>
       <div class="board" id="human-board"></div>
-      <div class="lives" id="human-lives">Left click digs. Right click flags.</div>
+      <div class="lives" id="human-lives"></div>
       <div class="log" id="human-log"></div>
     </div>
     <div class="side" id="agent-side">
@@ -250,7 +250,7 @@ function startHumanBoard(){
   const element=byId("human-board");
   engine.onChange=()=>renderBoard(element,engine);
   renderBoard(element,engine,{reveal:(row,col)=>humanMove(()=>engine.reveal(row,col),`You dug (${row},${col})`),flag:(row,col)=>humanMove(()=>engine.toggleFlag(row,col),`You flagged (${row},${col})`)});
-  byId("human-lives").textContent="Left click digs. Right click flags.";
+  byId("human-lives").textContent="";
   clearInterval(humanTimer); humanTimer=setInterval(()=>{ byId("human-timer").textContent=(game.human.startedAt? ((game.human.endedAt||Date.now())-game.human.startedAt)/1000 : 0).toFixed(1)+"s"; },100);
 }
 async function humanMove(action, label){

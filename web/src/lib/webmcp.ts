@@ -139,7 +139,18 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       return { ok: true, board: boardIndex + 1, boardsSolved: solved, secondsLeft: raceApi.secondsLeft() };
     },
   };
-  Object.assign(engine, raceApi);
+  const publicGame = Object.freeze({
+    get rows() { return engine.rows; },
+    get cols() { return engine.cols; },
+    get mines() { return engine.mines; },
+    view: () => engine.view(),
+    text: () => engine.text(),
+    reveal: (row: number, col: number) => engine.reveal(row, col),
+    toggleFlag: (row: number, col: number) => engine.toggleFlag(row, col),
+    neighbors: (row: number, col: number) => engine.neighbors(row, col),
+    summary: () => engine.summary(),
+    ...raceApi,
+  });
 
   function makeExecute(tool: ToolDefinition) {
     return async (input: unknown) => {
@@ -150,7 +161,7 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
       let result: unknown;
       try {
         const body = new Function("game", "input", tool.code);
-        result = await body(engine, input ?? {});
+        result = await body(publicGame, input ?? {});
       } catch (error) {
         result = { ok: false, error: `tool ${tool.name} threw: ${(error as Error).message}` };
       }

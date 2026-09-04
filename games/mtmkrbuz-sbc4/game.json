@@ -1,0 +1,17 @@
+{
+  "id": "mtmkrbuz-sbc4",
+  "createdAt": 1788503421131,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 1085710195,
+  "toolHead": 3,
+  "startHead": 3,
+  "allowRetry": false,
+  "guests": {},
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0
+  }
+}

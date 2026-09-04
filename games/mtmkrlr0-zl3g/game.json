@@ -1,0 +1,18 @@
+{
+  "id": "mtmkrlr0-zl3g",
+  "createdAt": 1788503433948,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 1083767339,
+  "toolHead": 3,
+  "startHead": 3,
+  "allowRetry": false,
+  "spectate": true,
+  "guests": {},
+  "human": {
+    "status": "spectating",
+    "moves": 0,
+    "retries": 0
+  }
+}

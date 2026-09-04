@@ -85,6 +85,8 @@
       <select id="f-head"><option value="">Latest (everything ever written)</option><option value="0">Default only (fresh party)</option></select>
       <label>Board seed (blank = random)</label><input id="f-seed" placeholder="random">
       <div class="check"><input id="f-retry" type="checkbox"><span>Allow retries after a mine (same layout, clock keeps running)</span></div>
+      <div class="check"><input id="f-spectate" type="checkbox"><span>Skip me: just watch the guests play</span></div>
+      <div class="check"><input id="f-newboard" type="checkbox"><span>When replaying, use a new board layout (keeps size, mines, tools)</span></div>
       <div class="row" style="margin-top:10px"><button class="primary" id="b-new">Start game</button><button id="b-last">Replay last board</button></div>
     </div>
     <div class="panel" style="margin-top:12px">
@@ -285,11 +287,13 @@ $("b-newtool")&&($("b-newtool").onclick=async()=>{ let schema; try{ schema=JSON.
 
 // ============ HOST: game + human board ============
 async function newGame(useLast=false){
-  const body=useLast?{useLast:true,allowRetry:$("f-retry").checked,toolHead:$("f-head").value}:{rows:+$("f-rows").value,cols:+$("f-cols").value,mines:+$("f-mines").value,seed:$("f-seed").value?+$("f-seed").value:undefined,toolHead:$("f-head").value,allowRetry:$("f-retry").checked};
+  const spectate=$("f-spectate").checked;
+  const body=useLast?{useLast:true,newBoard:$("f-newboard").checked,allowRetry:$("f-retry").checked,toolHead:$("f-head").value,spectate}:{rows:+$("f-rows").value,cols:+$("f-cols").value,mines:+$("f-mines").value,seed:$("f-seed").value?+$("f-seed").value:undefined,toolHead:$("f-head").value,allowRetry:$("f-retry").checked,spectate};
   game=await api("/api/games",{method:"POST",body:JSON.stringify(body)}); guestBoards={}; $("chatter").innerHTML=""; startHumanBoard(); renderGuests(); renderGuestBoards(); renderMetrics(); $("b-invite").disabled=false; loadGames(); loadTools();
   banner(`🎊 Party started · ${game.rows}×${game.cols}, ${game.mines} mines · seed ${game.seed}`);
 }
 function startHumanBoard(){
+  $("human-side").style.display=game.spectate?"none":"";
   ms=new Minesweeper({rows:game.rows,cols:game.cols,mines:game.mines,seed:game.seed});
   const el=$("human-board");
   ms.onChange=()=>{ renderBoard(el,ms); };

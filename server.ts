@@ -1,5 +1,3 @@
-// Minesweeper Challenge Party — one Bun server. You host, Luna agents are guests.
-// Run: bun --hot server.ts
 import index from "./index.html";
 import { mkdirSync, existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,23 +5,22 @@ import { inviteGuest, heckleGuest, type GuestEvent } from "./agent";
 
 const PORT = Number(process.env.PORT ?? 4321);
 const ROOT = import.meta.dir;
-const GAMES = join(ROOT, "games");
-const TOOL_LOG = "mcp-party-tools"; // memo named log holding every tool version ever written
-mkdirSync(GAMES, { recursive: true });
+const GAMES_DIR = join(ROOT, "games");
+const TOOL_LOG = "mcp-party-tools";
+mkdirSync(GAMES_DIR, { recursive: true });
 
-// ---------- Tools: source of truth is memo. Config = replay of the log, latest per name wins. ----------
-export type ToolDef = {
+export type ToolDefinition = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  code: string; // JS function body: (game, input) => result
+  code: string;
   by: string;
   memoId?: number;
   datetime?: string;
   deleted?: boolean;
 };
 
-const DEFAULT_TOOLS: ToolDef[] = [
+const DEFAULT_TOOLS: ToolDefinition[] = [
   {
     name: "look_at_board",
     description:
@@ -41,7 +38,7 @@ const DEFAULT_TOOLS: ToolDef[] = [
       required: ["row", "col"],
       additionalProperties: false,
     },
-    code: `const r = game.reveal(input.row, input.col); return { ...r, board: game.text(), ...game.summary() };`,
+    code: `const result = game.reveal(input.row, input.col); return { ...result, board: game.text(), ...game.summary() };`,
     by: "host",
   },
   {
@@ -53,16 +50,15 @@ const DEFAULT_TOOLS: ToolDef[] = [
       required: ["row", "col"],
       additionalProperties: false,
     },
-    code: `const r = game.toggleFlag(input.row, input.col); return { ...r, board: game.text(), ...game.summary() };`,
+    code: `const result = game.toggleFlag(input.row, input.col); return { ...result, board: game.text(), ...game.summary() };`,
     by: "host",
   },
 ];
 
-// edit_tool is the only tool agents cannot rewrite. It lives here, not in memo.
-export const EDIT_TOOL: Omit<ToolDef, "code"> = {
+export const EDIT_TOOL: Omit<ToolDefinition, "code"> = {
   name: "edit_tool",
   description:
-    "Create or rewrite any tool on this page, for you and every agent after you. Provide name, description, a JSON Schema inputSchema, and code: a JavaScript function body that receives (game, input) and returns a JSON-serializable result. game API: game.rows, game.cols, game.view() -> string[][] of '#', 'F', '*', or digit; game.text() -> printable board; game.reveal(row, col); game.toggleFlag(row, col); game.neighbors(row, col) -> [row, col][]; game.summary(). Take effect immediately. Example code: 'let n=0; for (const [r,c] of input.cells) { const x = game.reveal(r,c); if (x.hitMine) break; n++; } return { revealed: n, board: game.text(), ...game.summary() };'",
+    "Create or rewrite any tool on this page, for you and every agent after you. Provide name, description, a JSON Schema inputSchema, and code: a JavaScript function body that receives (game, input) and returns a JSON-serializable result. game API: game.rows, game.cols, game.view() -> string[][] of '#', 'F', '*', or digit; game.text() -> printable board; game.reveal(row, col); game.toggleFlag(row, col); game.neighbors(row, col) -> [row, col][]; game.summary(). Takes effect immediately. Example code: 'let revealed = 0; for (const [row, col] of input.cells) { const result = game.reveal(row, col); if (result.hitMine) break; revealed++; } return { revealed, board: game.text(), ...game.summary() };'",
   inputSchema: {
     type: "object",
     properties: {
@@ -78,71 +74,76 @@ export const EDIT_TOOL: Omit<ToolDef, "code"> = {
 };
 
 async function memo(args: string[]): Promise<string> {
-  const p = Bun.spawn(["memo", ...args], { stdout: "pipe", stderr: "pipe" });
-  const out = await new Response(p.stdout).text();
-  const err = await new Response(p.stderr).text();
-  if ((await p.exited) !== 0) throw new Error(`memo ${args[0]} failed: ${err || out}`);
-  return out;
+  const memoProcess = Bun.spawn(["memo", ...args], { stdout: "pipe", stderr: "pipe" });
+  const stdout = await new Response(memoProcess.stdout).text();
+  const stderr = await new Response(memoProcess.stderr).text();
+  if ((await memoProcess.exited) !== 0) throw new Error(`memo ${args[0]} failed: ${stderr || stdout}`);
+  return stdout;
 }
 
 type MemoEntry = { id: number; datetime: string; content: string };
+
+function parseMemoLines(output: string): MemoEntry[] {
+  return output
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as MemoEntry)
+    .sort((left, right) => left.id - right.id);
+}
+
 async function readToolLog(): Promise<MemoEntry[]> {
   try {
-    // memo caps --limit at 1000 (newest first). Grab the newest 1000, then backfill older ids with `read`.
-    const out = await memo(["search", "--log", TOOL_LOG, "--json", "--full", "--limit", "1000"]);
-    const rows = out.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as MemoEntry).sort((a, b) => a.id - b.id);
-    const oldest = rows[0]?.id ?? 1;
-    for (let start = oldest - 1; start >= 1; start -= 200) {
-      const ids = Array.from({ length: Math.min(200, start) }, (_, i) => String(start - i));
-      const more = await memo(["read", ...ids, "--log", TOOL_LOG, "--json"]);
-      rows.unshift(...more.trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as MemoEntry).sort((a, b) => a.id - b.id));
+    const entries = parseMemoLines(await memo(["search", "--log", TOOL_LOG, "--json", "--full", "--limit", "1000"]));
+    const oldestLoadedId = entries[0]?.id ?? 1;
+    for (let start = oldestLoadedId - 1; start >= 1; start -= 200) {
+      const ids = Array.from({ length: Math.min(200, start) }, (_, offset) => String(start - offset));
+      entries.unshift(...parseMemoLines(await memo(["read", ...ids, "--log", TOOL_LOG, "--json"])));
     }
-    return rows;
+    return entries;
   } catch {
     return [];
   }
 }
 
-/** Replay the memo log up to `upTo` (inclusive memo id). Returns the tool config at that point. */
-export async function toolConfig(upTo?: number, sinceExclusive?: number): Promise<{ tools: ToolDef[]; head: number; entries: MemoEntry[] }> {
+export async function toolConfig(seedHead?: number, liveEditsAfter?: number) {
   const entries = await readToolLog();
-  const map = new Map<string, ToolDef>();
-  for (const t of DEFAULT_TOOLS) map.set(t.name, { ...t, memoId: 0 });
+  const toolsByName = new Map<string, ToolDefinition>();
+  for (const tool of DEFAULT_TOOLS) toolsByName.set(tool.name, { ...tool, memoId: 0 });
   let head = 0;
-  for (const e of entries) {
-    // Seeded games: replay up to the seed, skip the gap, then include anything written after the game began.
-    if (upTo !== undefined && e.id > upTo && !(sinceExclusive !== undefined && e.id > sinceExclusive)) continue;
-    head = e.id;
+  for (const entry of entries) {
+    const beyondSeed = seedHead !== undefined && entry.id > seedHead;
+    const isLiveEdit = liveEditsAfter !== undefined && entry.id > liveEditsAfter;
+    if (beyondSeed && !isLiveEdit) continue;
+    head = entry.id;
     try {
-      const t = JSON.parse(e.content) as ToolDef;
-      if (t.deleted) map.delete(t.name);
-      else map.set(t.name, { ...t, memoId: e.id, datetime: e.datetime });
+      const tool = JSON.parse(entry.content) as ToolDefinition;
+      if (tool.deleted) toolsByName.delete(tool.name);
+      else toolsByName.set(tool.name, { ...tool, memoId: entry.id, datetime: entry.datetime });
     } catch {}
   }
-  return { tools: [...map.values()], head, entries };
+  return { tools: [...toolsByName.values()], head, entries };
 }
 
-export async function writeTool(t: ToolDef): Promise<ToolDef> {
-  const name = String(t.name).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 48);
+export async function writeTool(candidate: ToolDefinition): Promise<ToolDefinition> {
+  const name = String(candidate.name).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 48);
   if (name === EDIT_TOOL.name) throw new Error("edit_tool cannot be rewritten");
-  const def: ToolDef = {
+  const definition: ToolDefinition = {
     name,
-    description: String(t.description ?? ""),
-    inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
-    code: String(t.code ?? ""),
-    by: String(t.by ?? "agent").slice(0, 64),
-    deleted: !!t.deleted,
+    description: String(candidate.description ?? ""),
+    inputSchema: (candidate.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
+    code: String(candidate.code ?? ""),
+    by: String(candidate.by ?? "agent").slice(0, 64),
+    deleted: !!candidate.deleted,
   };
-  // Smoke-compile so a syntax error never lands in the log.
-  if (!def.deleted) new Function("game", "input", def.code);
-  const out = await memo(["append", "--log", TOOL_LOG, "--json", JSON.stringify(def)]);
-  const { id, datetime } = JSON.parse(out.trim().split("\n").pop()!);
-  const saved = { ...def, memoId: id, datetime };
+  if (!definition.deleted) new Function("game", "input", definition.code);
+  const output = await memo(["append", "--log", TOOL_LOG, "--json", JSON.stringify(definition)]);
+  const { id, datetime } = JSON.parse(output.trim().split("\n").pop()!);
+  const saved = { ...definition, memoId: id, datetime };
   broadcast({ type: "tools", ...(await toolConfig()) });
   return saved;
 }
 
-// ---------- Games ----------
 export type Guest = {
   name: string;
   hat: string;
@@ -156,6 +157,15 @@ export type Guest = {
   retries: number;
   error?: string;
 };
+
+export type HumanState = {
+  status: "ready" | "playing" | "won" | "lost" | "spectating";
+  startedAt?: number;
+  endedAt?: number;
+  moves: number;
+  retries: number;
+};
+
 export type Game = {
   id: string;
   createdAt: number;
@@ -163,304 +173,370 @@ export type Game = {
   cols: number;
   mines: number;
   seed: number;
-  toolHead: number; // memo id the tool config was seeded from
-  startHead: number; // memo head when the game was created; later entries are live edits for this game
+  toolHead: number;
+  startHead: number;
   allowRetry: boolean;
+  spectate: boolean;
   guests: Record<string, Guest>;
-  human: { status: "ready" | "playing" | "won" | "lost"; startedAt?: number; endedAt?: number; moves: number; retries: number };
+  human: HumanState;
   winner?: "human" | string | "nobody";
 };
 
 const games = new Map<string, Game>();
-const gameDir = (id: string) => join(GAMES, id);
-function saveGame(g: Game) {
-  mkdirSync(join(gameDir(g.id), "guests"), { recursive: true });
-  writeFileSync(join(gameDir(g.id), "game.json"), JSON.stringify(g, null, 2));
+const gameDir = (gameId: string) => join(GAMES_DIR, gameId);
+
+function saveGame(game: Game) {
+  mkdirSync(join(gameDir(game.id), "guests"), { recursive: true });
+  writeFileSync(join(gameDir(game.id), "game.json"), JSON.stringify(game, null, 2));
 }
+
 function loadGames() {
-  if (!existsSync(GAMES)) return;
-  for (const id of readdirSync(GAMES)) {
-    const f = join(GAMES, id, "game.json");
-    if (existsSync(f)) {
-      try {
-        const g = JSON.parse(readFileSync(f, "utf8")) as Game;
-        for (const gu of Object.values(g.guests)) if (gu.status === "arriving" || gu.status === "playing") gu.status = "left";
-        games.set(id, g);
-      } catch {}
-    }
+  if (!existsSync(GAMES_DIR)) return;
+  for (const gameId of readdirSync(GAMES_DIR)) {
+    const file = join(GAMES_DIR, gameId, "game.json");
+    if (!existsSync(file)) continue;
+    try {
+      const game = JSON.parse(readFileSync(file, "utf8")) as Game;
+      for (const guest of Object.values(game.guests)) {
+        if (guest.status === "arriving" || guest.status === "playing") guest.status = "left";
+      }
+      games.set(gameId, game);
+    } catch {}
   }
 }
 loadGames();
-const lastGame = () => [...games.values()].sort((a, b) => b.createdAt - a.createdAt)[0];
 
-function appendTranscript(gameId: string, guest: string, ev: GuestEvent) {
+const lastGame = () => [...games.values()].sort((left, right) => right.createdAt - left.createdAt)[0];
+
+function appendTranscript(gameId: string, guestName: string, event: GuestEvent) {
   mkdirSync(join(gameDir(gameId), "guests"), { recursive: true });
-  appendFileSync(join(gameDir(gameId), "guests", `${guest}.jsonl`), JSON.stringify({ t: Date.now(), ...ev }) + "\n");
-}
-function toolLog(gameId: string, line: Record<string, unknown>) {
-  appendFileSync(join(gameDir(gameId), "tool-calls.jsonl"), JSON.stringify({ t: Date.now(), ...line }) + "\n");
+  appendFileSync(join(gameDir(gameId), "guests", `${guestName}.jsonl`), JSON.stringify({ t: Date.now(), ...event }) + "\n");
 }
 
-function settleWinner(g: Game) {
-  if (g.winner) return;
-  const finished = (s: string) => s === "won" || s === "lost";
-  const guests = Object.values(g.guests);
-  const humanDone = finished(g.human.status);
-  const guestsDone = guests.length > 0 && guests.every((x) => finished(x.status) || x.status === "left" || x.status === "error");
-  const wins: { who: string; at: number }[] = [];
-  if (g.human.status === "won") wins.push({ who: "human", at: g.human.endedAt! });
-  for (const x of guests) if (x.status === "won") wins.push({ who: x.name, at: x.endedAt! });
-  if (wins.length) {
-    // First to finish wins. If the human has won and a guest is still playing, wait; a guest could have started earlier.
-    if (!humanDone || !guestsDone) {
-      const stillPlaying = guests.some((x) => x.status === "playing" || x.status === "arriving") || g.human.status === "playing";
-      if (stillPlaying) return;
-    }
-    wins.sort((a, b) => a.at - b.at);
-    g.winner = wins[0].who;
-  } else if (humanDone && guestsDone) g.winner = "nobody";
-  if (g.winner) {
-    saveGame(g);
-    broadcast({ type: "winner", gameId: g.id, winner: g.winner });
+function appendToolLog(gameId: string, record: Record<string, unknown>) {
+  appendFileSync(join(gameDir(gameId), "tool-calls.jsonl"), JSON.stringify({ t: Date.now(), ...record }) + "\n");
+}
+
+function settleWinner(game: Game) {
+  if (game.winner) return;
+  const isFinished = (status: string) => status === "won" || status === "lost";
+  const guests = Object.values(game.guests);
+  const humanDone = game.spectate || isFinished(game.human.status);
+  const guestsDone =
+    guests.length > 0 && guests.every((guest) => isFinished(guest.status) || guest.status === "left" || guest.status === "error");
+  const finishers: { who: string; at: number }[] = [];
+  if (game.human.status === "won") finishers.push({ who: "human", at: game.human.endedAt! });
+  for (const guest of guests) if (guest.status === "won") finishers.push({ who: guest.name, at: guest.endedAt! });
+
+  if (finishers.length) {
+    const someoneStillPlaying =
+      guests.some((guest) => guest.status === "playing" || guest.status === "arriving") || game.human.status === "playing";
+    if ((!humanDone || !guestsDone) && someoneStillPlaying) return;
+    finishers.sort((left, right) => left.at - right.at);
+    game.winner = finishers[0].who;
+  } else if (humanDone && guestsDone) {
+    game.winner = "nobody";
+  }
+
+  if (game.winner) {
+    saveGame(game);
+    broadcast({ type: "winner", gameId: game.id, winner: game.winner });
   }
 }
 
-// ---------- WebSocket fan-out ----------
-type WS = import("bun").ServerWebSocket<{ gameId?: string }>;
-const sockets = new Set<WS>();
-function broadcast(msg: unknown) {
-  const s = JSON.stringify(msg);
-  for (const ws of sockets) ws.send(s);
+type PartySocket = import("bun").ServerWebSocket<{ gameId?: string }>;
+const sockets = new Set<PartySocket>();
+
+function broadcast(message: unknown) {
+  const serialized = JSON.stringify(message);
+  for (const socket of sockets) socket.send(serialized);
 }
 
-// ---------- WebMCP bridge: each guest tab publishes the tools it registered via document.modelContext.
-// Codex reaches those exact registrations through an MCP server (agent.ts) that calls into the tab here. ----------
 type PublishedTool = { name: string; title?: string; description: string; inputSchema: unknown; annotations?: unknown };
-const guestTabs = new Map<string, { ws: WS; tools: PublishedTool[] }>(); // key: `${gameId}/${guest}`
-const pending = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
-export function webmcpListTools(gameId: string, guest: string): PublishedTool[] | null {
-  return guestTabs.get(`${gameId}/${guest}`)?.tools ?? null;
+const guestTabs = new Map<string, { socket: PartySocket; tools: PublishedTool[] }>();
+const pendingCalls = new Map<string, { resolve: (value: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
+const guestTabKey = (gameId: string, guestName: string) => `${gameId}/${guestName}`;
+
+export function webmcpListTools(gameId: string, guestName: string): PublishedTool[] | null {
+  return guestTabs.get(guestTabKey(gameId, guestName))?.tools ?? null;
 }
-export function webmcpCall(gameId: string, guest: string, name: string, input: unknown): Promise<unknown> {
-  const tab = guestTabs.get(`${gameId}/${guest}`);
+
+export function webmcpCall(gameId: string, guestName: string, toolName: string, input: unknown): Promise<unknown> {
+  const tab = guestTabs.get(guestTabKey(gameId, guestName));
   if (!tab) return Promise.resolve({ ok: false, error: "Your party page is not open. Ask the host." });
-  const id = crypto.randomUUID();
+  const callId = crypto.randomUUID();
   return new Promise((resolve) => {
-    const timer = setTimeout(() => { pending.delete(id); resolve({ ok: false, error: "tool call timed out" }); }, 30_000);
-    pending.set(id, { resolve, timer });
-    tab.ws.send(JSON.stringify({ type: "webmcp-call", id, name, input }));
+    const timer = setTimeout(() => {
+      pendingCalls.delete(callId);
+      resolve({ ok: false, error: "tool call timed out" });
+    }, 30_000);
+    pendingCalls.set(callId, { resolve, timer });
+    tab.socket.send(JSON.stringify({ type: "webmcp-call", id: callId, name: toolName, input }));
   });
 }
-export async function waitForGuestTab(gameId: string, guest: string, ms = 15_000): Promise<boolean> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) { if (guestTabs.has(`${gameId}/${guest}`)) return true; await Bun.sleep(150); }
+
+export async function waitForGuestTab(gameId: string, guestName: string, timeoutMs = 15_000): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (guestTabs.has(guestTabKey(gameId, guestName))) return true;
+    await Bun.sleep(150);
+  }
   return false;
 }
 
 const PARTY_NAMES = ["Luna", "Nova", "Pixel", "Bolt", "Mochi", "Zippy", "Biscuit", "Comet", "Pebble", "Sprocket", "Waffles", "Gizmo"];
 const HATS = ["🎩", "🥳", "🎉", "👑", "🪩", "🎈", "🧢", "🎀", "🦄", "🪅", "🍕", "🎂"];
 
-async function json(req: Request) {
-  try { return (await req.json()) as any; } catch { return {}; }
+async function readJson(request: Request) {
+  try {
+    return (await request.json()) as any;
+  } catch {
+    return {};
+  }
 }
-const ok = (b: unknown, status = 200) => Response.json(b, { status });
+const respond = (body: unknown, status = 200) => Response.json(body, { status });
+
+function readJsonl(file: string) {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+}
 
 const server = Bun.serve<{ gameId?: string }>({
   port: PORT,
   development: { hmr: true, console: true },
   routes: {
     "/": index,
-    "/api/health": () => ok({ ok: true, party: "Minesweeper Challenge Party" }),
-    "/api/edit-tool": () => ok(EDIT_TOOL),
+    "/api/health": () => respond({ ok: true, party: "Minesweeper Challenge Party" }),
+    "/api/edit-tool": () => respond(EDIT_TOOL),
 
     "/api/tools": {
-      GET: async (req) => {
-        const url = new URL(req.url);
+      GET: async (request) => {
+        const url = new URL(request.url);
         const gameId = url.searchParams.get("game");
         if (gameId && games.has(gameId)) {
-          const g = games.get(gameId)!;
-          return ok(await toolConfig(g.toolHead, g.startHead));
+          const game = games.get(gameId)!;
+          return respond(await toolConfig(game.toolHead, game.startHead));
         }
         const upTo = url.searchParams.get("upTo");
-        return ok(await toolConfig(upTo ? Number(upTo) : undefined));
+        return respond(await toolConfig(upTo ? Number(upTo) : undefined));
       },
-      POST: async (req) => {
-        const body = await json(req);
+      POST: async (request) => {
+        const body = await readJson(request);
         try {
           const saved = await writeTool({ ...body, by: body.by || "host" });
-          if (body.gameId) toolLog(body.gameId, { kind: "edit_tool", by: saved.by, tool: saved.name, memoId: saved.memoId });
-          return ok(saved, 201);
-        } catch (e: any) { return ok({ error: String(e.message || e) }, 400); }
+          if (body.gameId) appendToolLog(body.gameId, { kind: "edit_tool", by: saved.by, tool: saved.name, memoId: saved.memoId });
+          return respond(saved, 201);
+        } catch (error) {
+          return respond({ error: String((error as Error).message || error) }, 400);
+        }
       },
     },
 
     "/api/games": {
-      GET: () => ok([...games.values()].sort((a, b) => b.createdAt - a.createdAt)),
-      POST: async (req) => {
-        const body = await json(req);
-        const last = lastGame();
-        const useLast = !!body.useLast && last;
-        const cfg = await toolConfig(body.toolHead !== undefined && body.toolHead !== "" ? Number(body.toolHead) : undefined);
-        const rows = Math.max(4, Math.min(30, Number(useLast ? last!.rows : body.rows ?? 9)));
-        const cols = Math.max(4, Math.min(40, Number(useLast ? last!.cols : body.cols ?? 9)));
+      GET: () => respond([...games.values()].sort((left, right) => right.createdAt - left.createdAt)),
+      POST: async (request) => {
+        const body = await readJson(request);
+        const previous = lastGame();
+        const reusePrevious = !!body.useLast && previous;
+        const seedHead = body.toolHead !== undefined && body.toolHead !== "" ? Number(body.toolHead) : undefined;
+        const config = await toolConfig(seedHead);
+        const rows = Math.max(4, Math.min(30, Number(reusePrevious ? previous!.rows : body.rows ?? 9)));
+        const cols = Math.max(4, Math.min(40, Number(reusePrevious ? previous!.cols : body.cols ?? 9)));
         const maxMines = rows * cols - 9;
-        const mines = Math.max(1, Math.min(maxMines, Number(useLast ? last!.mines : body.mines ?? Math.round(rows * cols * 0.12))));
-        const g: Game = {
+        const mines = Math.max(1, Math.min(maxMines, Number(reusePrevious ? previous!.mines : body.mines ?? Math.round(rows * cols * 0.12))));
+        const keepBoard = reusePrevious && !body.newBoard;
+        const spectate = !!body.spectate;
+        const game: Game = {
           id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
           createdAt: Date.now(),
-          rows, cols, mines,
-          seed: useLast ? last!.seed : Number(body.seed) || Math.floor(Math.random() * 2 ** 31),
-          toolHead: cfg.head,
+          rows,
+          cols,
+          mines,
+          seed: keepBoard ? previous!.seed : Number(body.seed) || Math.floor(Math.random() * 2 ** 31),
+          toolHead: config.head,
           startHead: (await toolConfig()).head,
           allowRetry: !!body.allowRetry,
+          spectate,
           guests: {},
-          human: { status: "ready", moves: 0, retries: 0 },
+          human: { status: spectate ? "spectating" : "ready", moves: 0, retries: 0 },
         };
-        games.set(g.id, g);
-        saveGame(g);
-        broadcast({ type: "game", game: g });
-        return ok(g, 201);
+        games.set(game.id, game);
+        saveGame(game);
+        broadcast({ type: "game", game });
+        return respond(game, 201);
       },
     },
+
     "/api/games/:id": {
-      GET: (req) => {
-        const g = games.get(req.params.id);
-        return g ? ok(g) : ok({ error: "no such game" }, 404);
+      GET: (request) => {
+        const game = games.get(request.params.id);
+        return game ? respond(game) : respond({ error: "no such game" }, 404);
       },
     },
-    // Human side reports its progress (the human plays in the browser; the server only records).
+
     "/api/games/:id/human": {
-      POST: async (req) => {
-        const g = games.get(req.params.id);
-        if (!g) return ok({ error: "no such game" }, 404);
-        const body = await json(req);
-        Object.assign(g.human, body);
-        saveGame(g);
-        broadcast({ type: "human", gameId: g.id, human: g.human });
-        settleWinner(g);
-        return ok(g.human);
+      POST: async (request) => {
+        const game = games.get(request.params.id);
+        if (!game) return respond({ error: "no such game" }, 404);
+        Object.assign(game.human, await readJson(request));
+        saveGame(game);
+        broadcast({ type: "human", gameId: game.id, human: game.human });
+        settleWinner(game);
+        return respond(game.human);
       },
     },
-    // Agent side: the page executes every tool call (that's WebMCP) and reports each one here for the audit trail + scoreboard.
+
     "/api/games/:id/guest/:guest/call": {
-      POST: async (req) => {
-        const g = games.get(req.params.id);
-        if (!g) return ok({ error: "no such game" }, 404);
-        const guest = g.guests[req.params.guest];
-        const body = await json(req);
-        toolLog(g.id, { kind: "tool_call", guest: req.params.guest, tool: body.tool, input: body.input, result: body.result });
+      POST: async (request) => {
+        const game = games.get(request.params.id);
+        if (!game) return respond({ error: "no such game" }, 404);
+        const guest = game.guests[request.params.guest];
+        const body = await readJson(request);
+        appendToolLog(game.id, { kind: "tool_call", guest: request.params.guest, tool: body.tool, input: body.input, result: body.result });
         if (guest) {
           guest.toolCalls++;
           if (body.tool === "edit_tool") guest.toolsEdited++;
           if (body.status) {
-            if (guest.status === "arriving" && body.status === "playing") { guest.status = "playing"; guest.startedAt = Date.now(); }
+            if (guest.status === "arriving" && body.status === "playing") {
+              guest.status = "playing";
+              guest.startedAt = Date.now();
+            }
             if (body.status === "won" || body.status === "lost") {
-              if (body.status === "lost" && g.allowRetry) { guest.retries++; }
-              else { guest.status = body.status; guest.endedAt = Date.now(); }
+              if (body.status === "lost" && game.allowRetry) guest.retries++;
+              else {
+                guest.status = body.status;
+                guest.endedAt = Date.now();
+              }
             }
           }
           if (typeof body.moves === "number") guest.moves = body.moves;
-          saveGame(g);
-          broadcast({ type: "guest", gameId: g.id, guest, board: body.board });
-          settleWinner(g);
+          saveGame(game);
+          broadcast({ type: "guest", gameId: game.id, guest, board: body.board });
+          settleWinner(game);
         }
-        return ok({ ok: true });
+        return respond({ ok: true });
       },
     },
+
     "/api/games/:id/invite": {
-      POST: async (req) => {
-        const g = games.get(req.params.id);
-        if (!g) return ok({ error: "no such game" }, 404);
-        const body = await json(req);
-        const n = Math.max(1, Math.min(8, Number(body.count ?? 1)));
+      POST: async (request) => {
+        const game = games.get(request.params.id);
+        if (!game) return respond({ error: "no such game" }, 404);
+        const body = await readJson(request);
+        const count = Math.max(1, Math.min(8, Number(body.count ?? 1)));
         const invited: Guest[] = [];
-        for (let i = 0; i < n; i++) {
-          const k = Object.keys(g.guests).length;
-          const name = `${PARTY_NAMES[k % PARTY_NAMES.length]}-${k + 1}`;
-          const guest: Guest = { name, hat: HATS[k % HATS.length], status: "arriving", moves: 0, toolCalls: 0, toolsEdited: 0, retries: 0 };
-          g.guests[name] = guest;
+        for (let index = 0; index < count; index++) {
+          const guestNumber = Object.keys(game.guests).length;
+          const guestName = `${PARTY_NAMES[guestNumber % PARTY_NAMES.length]}-${guestNumber + 1}`;
+          const guest: Guest = {
+            name: guestName,
+            hat: HATS[guestNumber % HATS.length],
+            status: "arriving",
+            moves: 0,
+            toolCalls: 0,
+            toolsEdited: 0,
+            retries: 0,
+          };
+          game.guests[guestName] = guest;
           invited.push(guest);
-          const url = `http://localhost:${PORT}/?game=${g.id}&guest=${encodeURIComponent(name)}`;
+          const url = `http://localhost:${PORT}/?game=${game.id}&guest=${encodeURIComponent(guestName)}`;
           Bun.spawn(["open", "-a", "Google Chrome", url]).exited.catch(() => {});
-          waitForGuestTab(g.id, name).then((ready) => {
-            if (!ready) appendTranscript(g.id, name, { kind: "error", message: "guest tab never connected" });
+          waitForGuestTab(game.id, guestName).then((connected) => {
+            if (!connected) appendTranscript(game.id, guestName, { kind: "error", message: "guest tab never connected" });
           });
           inviteGuest({
-            gameId: g.id,
-            name, url,
+            gameId: game.id,
+            name: guestName,
+            url,
             model: body.model || "gpt-5.6-luna",
             reasoningEffort: body.reasoningEffort || "low",
-            onEvent: (ev) => {
-              appendTranscript(g.id, name, ev);
-              broadcast({ type: "chatter", gameId: g.id, guest: name, ev });
-              if (ev.kind === "session") { guest.threadId = ev.threadId; saveGame(g); }
-              if (ev.kind === "finish") {
+            onEvent: (event) => {
+              appendTranscript(game.id, guestName, event);
+              broadcast({ type: "chatter", gameId: game.id, guest: guestName, ev: event });
+              if (event.kind === "session") {
+                guest.threadId = event.threadId;
+                saveGame(game);
+              }
+              if (event.kind === "finish") {
                 if (guest.status === "arriving" || guest.status === "playing") guest.status = "left";
                 guest.endedAt ??= Date.now();
-                saveGame(g);
-                broadcast({ type: "guest", gameId: g.id, guest });
-                settleWinner(g);
+                saveGame(game);
+                broadcast({ type: "guest", gameId: game.id, guest });
+                settleWinner(game);
               }
-              if (ev.kind === "error") {
-                guest.status = "error"; guest.error = ev.message; guest.endedAt = Date.now();
-                saveGame(g);
-                broadcast({ type: "guest", gameId: g.id, guest });
-                settleWinner(g);
+              if (event.kind === "error") {
+                guest.status = "error";
+                guest.error = event.message;
+                guest.endedAt = Date.now();
+                saveGame(game);
+                broadcast({ type: "guest", gameId: game.id, guest });
+                settleWinner(game);
               }
             },
           });
         }
-        saveGame(g);
-        broadcast({ type: "game", game: g });
-        return ok(invited, 201);
+        saveGame(game);
+        broadcast({ type: "game", game });
+        return respond(invited, 201);
       },
     },
+
     "/api/games/:id/guest/:guest/heckle": {
-      POST: async (req) => {
-        const body = await json(req);
-        const sent = await heckleGuest(req.params.guest, String(body.message || "You're losing to a human, you know."));
-        if (sent) appendTranscript(req.params.id, req.params.guest, { kind: "heckle", text: body.message });
-        return ok({ sent });
+      POST: async (request) => {
+        const body = await readJson(request);
+        const message = String(body.message || "You're losing to a human, you know.");
+        const sent = await heckleGuest(request.params.guest, message);
+        if (sent) appendTranscript(request.params.id, request.params.guest, { kind: "heckle", text: message });
+        return respond({ sent });
       },
     },
+
     "/api/games/:id/transcript/:guest": {
-      GET: (req) => {
-        const f = join(gameDir(req.params.id), "guests", `${req.params.guest}.jsonl`);
-        if (!existsSync(f)) return ok([]);
-        return ok(readFileSync(f, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)));
-      },
+      GET: (request) => respond(readJsonl(join(gameDir(request.params.id), "guests", `${request.params.guest}.jsonl`))),
     },
+
     "/api/games/:id/tool-calls": {
-      GET: (req) => {
-        const f = join(gameDir(req.params.id), "tool-calls.jsonl");
-        if (!existsSync(f)) return ok([]);
-        return ok(readFileSync(f, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)));
-      },
+      GET: (request) => respond(readJsonl(join(gameDir(request.params.id), "tool-calls.jsonl"))),
     },
   },
-  fetch(req, server) {
-    const url = new URL(req.url);
+
+  fetch(request, server) {
+    const url = new URL(request.url);
     if (url.pathname === "/ws") {
-      if (server.upgrade(req, { data: {} })) return;
+      if (server.upgrade(request, { data: {} })) return;
       return new Response("upgrade failed", { status: 400 });
     }
     return new Response("not found", { status: 404 });
   },
+
   websocket: {
-    open(ws) { sockets.add(ws); },
-    close(ws) {
-      sockets.delete(ws);
-      for (const [k, v] of guestTabs) if (v.ws === ws) guestTabs.delete(k);
+    open(socket) {
+      sockets.add(socket);
     },
-    message(ws, raw) {
-      let m: any; try { m = JSON.parse(String(raw)); } catch { return; }
-      if (m.type === "hello" && m.gameId && m.guest) { guestTabs.set(`${m.gameId}/${m.guest}`, { ws, tools: [] }); }
-      if (m.type === "webmcp-tools" && m.gameId && m.guest) {
-        const k = `${m.gameId}/${m.guest}`;
-        guestTabs.set(k, { ws, tools: m.tools ?? [] });
+    close(socket) {
+      sockets.delete(socket);
+      for (const [key, tab] of guestTabs) if (tab.socket === socket) guestTabs.delete(key);
+    },
+    message(socket, raw) {
+      let message: any;
+      try {
+        message = JSON.parse(String(raw));
+      } catch {
+        return;
       }
-      if (m.type === "webmcp-result" && m.id) {
-        const p = pending.get(m.id); if (p) { clearTimeout(p.timer); pending.delete(m.id); p.resolve(m.result); }
+      if (message.type === "hello" && message.gameId && message.guest) {
+        guestTabs.set(guestTabKey(message.gameId, message.guest), { socket, tools: [] });
+      }
+      if (message.type === "webmcp-tools" && message.gameId && message.guest) {
+        guestTabs.set(guestTabKey(message.gameId, message.guest), { socket, tools: message.tools ?? [] });
+      }
+      if (message.type === "webmcp-result" && message.id) {
+        const pending = pendingCalls.get(message.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingCalls.delete(message.id);
+          pending.resolve(message.result);
+        }
       }
     },
   },

@@ -38,7 +38,7 @@ export function inviteGuest(options: {
     },
   });
 
-  const invitePrompt = `You're invited to a Minesweeper race. Open ${url} in Chrome. The page exposes WebMCP tools; call its ready_up tool when you're in, then stop.`;
+  const invitePrompt = `You're invited to a Minesweeper race. Open ${url} in Chrome and keep that tab open; the race happens there. The page exposes WebMCP tools; call its ready_up tool when you're in, then stop and wait for my next message.`;
   const startPrompt = `Beat me at Minesweeper. Use the page's tools—and improve them if you need to.`;
 
   const abort = new AbortController();

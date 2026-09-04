@@ -1,0 +1,35 @@
+{
+  "id": "mtmnvhdo-c4y4",
+  "createdAt": 1788508653756,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 118676510,
+  "toolHead": 19,
+  "startHead": 19,
+  "allowRetry": true,
+  "spectate": false,
+  "durationMs": 60000,
+  "guests": {
+    "Terra-1": {
+      "name": "Terra-1",
+      "hat": "🎩",
+      "status": "left",
+      "moves": 0,
+      "toolCalls": 1,
+      "toolsEdited": 0,
+      "retries": 0,
+      "solved": 0,
+      "boardIndex": 0,
+      "threadId": "01a06b6c-4a66-7a02-b2d8-6446bd4633f3",
+      "endedAt": 1788508703094
+    }
+  },
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0,
+    "solved": 0,
+    "boardIndex": 0
+  }
+}

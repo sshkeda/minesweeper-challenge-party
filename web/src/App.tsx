@@ -440,7 +440,7 @@ function GuestView({ gameId, guestName }: { gameId: string; guestName: string })
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
       {game && <Board view={view} rows={game.rows} cols={game.cols} />}
       <p className="max-w-md text-center text-xs text-muted-foreground">
-        This page exposes WebMCP tools via document.modelContext. If your browser has no WebMCP client, use tab.evaluate: window.webmcp.listTools() and await window.webmcp.call(name, input).
+        This page exposes WebMCP tools via document.modelContext. Without a WebMCP client, use the cdp capability: Runtime.evaluate with JSON.stringify(window.webmcp.listTools()) and window.webmcp.call(name, input).then(JSON.stringify), with awaitPromise and returnByValue.
       </p>
     </div>
   );

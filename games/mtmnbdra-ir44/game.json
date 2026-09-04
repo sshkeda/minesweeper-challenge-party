@@ -1,0 +1,21 @@
+{
+  "id": "mtmnbdra-ir44",
+  "createdAt": 1788507715942,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 2055593512,
+  "toolHead": 16,
+  "startHead": 16,
+  "allowRetry": true,
+  "spectate": false,
+  "durationMs": 120000,
+  "guests": {},
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0,
+    "solved": 0,
+    "boardIndex": 0
+  }
+}

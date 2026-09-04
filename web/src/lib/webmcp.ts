@@ -10,15 +10,21 @@ type RegisteredTool = {
   execute: (input: unknown) => unknown | Promise<unknown>;
 };
 
+type ModelContext = { registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }): void | Promise<void>; unregisterTool?: (name: string) => void };
+
 declare global {
   interface Document {
-    modelContext?: { registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }): void | Promise<void> };
+    modelContext?: ModelContext;
+  }
+  interface Navigator {
+    modelContext?: ModelContext;
   }
 }
 
 export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }: { gameId: string; guestName: string; socket: WebSocket; engine: Minesweeper; getGame: () => Game | null }) {
   const registry = new Map<string, RegisteredTool>();
-  const nativeRegisterTool = document.modelContext?.registerTool?.bind(document.modelContext) ?? null;
+  const nativeContext = document.modelContext?.registerTool ? document.modelContext : navigator.modelContext?.registerTool ? navigator.modelContext : null;
+  const nativeRegisterTool = nativeContext?.registerTool.bind(nativeContext) ?? null;
   const native = !!nativeRegisterTool;
   let registrationAbort: AbortController | null = null;
   let editToolDefinition: { description: string; inputSchema: Record<string, unknown> } | null = null;
@@ -36,7 +42,7 @@ export function createGuestWebMCP({ gameId, guestName, socket, engine, getGame }
   }
 
   const nativelyRegistered = new Set<string>();
-  const nativeUnregisterTool = (document.modelContext as { unregisterTool?: (name: string) => void } | undefined)?.unregisterTool?.bind(document.modelContext) ?? null;
+  const nativeUnregisterTool = nativeContext?.unregisterTool?.bind(nativeContext) ?? null;
 
   async function registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }) {
     registry.set(tool.name, tool);

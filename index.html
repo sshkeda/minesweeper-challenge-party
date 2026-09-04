@@ -49,15 +49,15 @@
 <body>
 <header>
   <h1>🎉 Minesweeper Challenge Party</h1>
-  <label class="toggle"><input type="checkbox" id="advanced-toggle"> Settings</label>
+  <label class="toggle"><input type="checkbox" id="advanced-toggle"> Advanced mode</label>
 </header>
 
 <main>
   <section class="center" id="lobby">
-    <h2 style="font-size:34px;margin:0 0 6px">Race an AI at Minesweeper</h2>
+    <h2 style="font-size:40px;margin:0 0 6px">Beat Luna at Minesweeper</h2>
     <p id="lobby-text">Connecting…</p>
     <button class="cta" id="start" disabled>Start the race</button>
-    <p class="hint">You click. Luna uses tools. First to clear the board wins.<br>You get one life. Luna gets to retry.</p>
+    <p class="hint">One life. Luna gets retries.</p>
   </section>
 
   <section class="result" id="result" style="display:none"><h2 id="result-text"></h2><button class="cta" id="again">Play again</button></section>
@@ -66,13 +66,13 @@
     <div class="side" id="human-side">
       <div class="side-head"><h2>🧑 You</h2><span class="timer" id="human-timer">0.0s</span></div>
       <div class="board" id="human-board"></div>
-      <div class="lives" id="human-lives">One life. Left click to dig, right click to flag.</div>
+      <div class="lives" id="human-lives">Left click digs. Right click flags.</div>
       <div class="log" id="human-log"></div>
     </div>
     <div class="side" id="agent-side">
       <div class="side-head"><h2 id="agent-title">🎩 Luna</h2><span class="timer" id="agent-timer">0.0s</span></div>
       <div class="board agent" id="agent-board"></div>
-      <div class="lives" id="agent-lives">Luna can retry. No mouse, only tools.</div>
+      <div class="lives" id="agent-lives">Luna plays with tools.</div>
       <div class="webmcp" id="webmcp" style="display:none"></div>
       <div class="log" id="agent-log"></div>
     </div>
@@ -215,7 +215,7 @@ socket.onmessage=(event)=>{
 
 function updateLobby(){
   const ready=socketReady&&toolsReady;
-  byId("lobby-text").textContent=ready?"Luna is here. Ready when you are.":"Connecting…";
+  byId("lobby-text").textContent=ready?"Luna is ready.":"Connecting…";
   byId("start").disabled=!ready;
 }
 
@@ -234,7 +234,7 @@ async function startGame(){
   byId("human-log").innerHTML=""; byId("agent-log").innerHTML="";
   for(const side of ["human-side","agent-side"]) byId(side).classList.remove("won","lost");
   byId("human-side").style.display=game.spectate?"none":"";
-  byId("agent-lives").textContent=game.allowRetry?"Luna can retry. No mouse, only tools.":"Luna gets one life too. No mouse, only tools.";
+  byId("agent-lives").textContent="Luna plays with tools.";
   startHumanBoard();
   renderView(byId("agent-board"), null, game.rows, game.cols);
   logLine(byId("agent-log"),"Calling Luna…","muted");
@@ -250,7 +250,7 @@ function startHumanBoard(){
   const element=byId("human-board");
   engine.onChange=()=>renderBoard(element,engine);
   renderBoard(element,engine,{reveal:(row,col)=>humanMove(()=>engine.reveal(row,col),`You dug (${row},${col})`),flag:(row,col)=>humanMove(()=>engine.toggleFlag(row,col),`You flagged (${row},${col})`)});
-  byId("human-lives").textContent="One life. Left click to dig, right click to flag.";
+  byId("human-lives").textContent="Left click digs. Right click flags.";
   clearInterval(humanTimer); humanTimer=setInterval(()=>{ byId("human-timer").textContent=(game.human.startedAt? ((game.human.endedAt||Date.now())-game.human.startedAt)/1000 : 0).toFixed(1)+"s"; },100);
 }
 async function humanMove(action, label){

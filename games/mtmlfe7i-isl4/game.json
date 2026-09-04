@@ -1,0 +1,30 @@
+{
+  "id": "mtmlfe7i-isl4",
+  "createdAt": 1788504543918,
+  "rows": 6,
+  "cols": 6,
+  "mines": 4,
+  "seed": 460049831,
+  "toolHead": 3,
+  "startHead": 3,
+  "allowRetry": true,
+  "spectate": false,
+  "guests": {
+    "Luna-1": {
+      "name": "Luna-1",
+      "hat": "🎩",
+      "status": "playing",
+      "moves": 1,
+      "toolCalls": 4,
+      "toolsEdited": 0,
+      "retries": 1,
+      "threadId": "01a06b2d-95d9-7b41-8c75-f680c7cf2c50",
+      "startedAt": 1788504630634
+    }
+  },
+  "human": {
+    "status": "ready",
+    "moves": 0,
+    "retries": 0
+  }
+}
